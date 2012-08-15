@@ -16,14 +16,14 @@ sudo ln -s django-firebird/firebird firebird
 cd /usr/local/lib/python2.7/dist-packages/django/db/backends
 sudo ln -s /usr/local/lib/python2.7/dist-packages/django-firebird/firebird
 
-DATABASES = {
+  DATABASES = {
   'default': {
-      'ENGINE' : 'django.db.backends.firebird',
-      'NAME' : '/var/lib/firebird/2.5/data/rdbgraph.fdb', # Path to database or db alias
-      'USER' : 'SYSDBA',           # Your db user
-      'PASSWORD' : '*****',    # db user password
-      'HOST' : '127.0.0.1',        # Your host machine
-      'PORT' : '3050',             # If is empty, use default 3050
-      #'OPTIONS' : {'charset':'ISO8859_1'}  
-        }
-}
+  'ENGINE' : 'django.db.backends.firebird',
+  'NAME' : '/var/lib/firebird/2.5/data/rdbgraph.fdb', # Path to database or db alias
+  'USER' : 'SYSDBA',           # Your db user
+  'PASSWORD' : '*****',    # db user password
+  'HOST' : '127.0.0.1',        # Your host machine
+  'PORT' : '3050',             # If is empty, use default 3050
+  #'OPTIONS' : {'charset':'ISO8859_1'}  
+  }
+  }
