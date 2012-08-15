@@ -14,6 +14,7 @@ sudo git clone git://github.com/maxirobaina/django-firebird.git
 sudo ln -s django-firebird/firebird firebird
 
 cd /usr/local/lib/python2.7/dist-packages/django/db/backends
+
 sudo ln -s /usr/local/lib/python2.7/dist-packages/django-firebird/firebird
 
   DATABASES = {
