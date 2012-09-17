@@ -1,5 +1,5 @@
 import sys
-import kinterbasdb as Database
+import fdb as Database
 
 from django.db.backends.creation import BaseDatabaseCreation
 
@@ -28,7 +28,8 @@ class DatabaseCreation(BaseDatabaseCreation):
         'IntegerField':      'integer',
         'BigIntegerField':   'bigint',
         'IPAddressField':    'char(15)',
-        'NullBooleanField':  'integer',
+        'GenericIPAddressField': 'char(39)',
+        'NullBooleanField':  'smallint',
         'OneToOneField':     'integer',
         'PositiveIntegerField': 'integer CHECK (%(qn_column)s >= 0)',
         'PositiveSmallIntegerField': 'smallint CHECK (%(qn_column)s >= 0)',
@@ -55,9 +56,7 @@ class DatabaseCreation(BaseDatabaseCreation):
 
     def _get_connection_params(self, **overrides):
         settings_dict = self.connection.settings_dict
-        conn_params = {
-            'charset': 'UNICODE_FSS'
-        }
+        conn_params = {'charset': 'UTF8'}
         conn_params['database'] = settings_dict['NAME']
         if settings_dict['HOST']:
             conn_params['host'] = settings_dict['HOST']
@@ -72,6 +71,7 @@ class DatabaseCreation(BaseDatabaseCreation):
         return conn_params
 
     def _rollback_works(self):
+        print "_rollback_works"
         cursor = self.connection.cursor()
         cursor.execute('CREATE TABLE ROLLBACK_TEST (X INT)')
         self.connection._commit()
@@ -81,9 +81,10 @@ class DatabaseCreation(BaseDatabaseCreation):
 
         cursor.execute('SELECT COUNT(X) FROM ROLLBACK_TEST')
         count, = cursor.fetchone()
+        self.connection._commit()
 
         cursor.execute('DROP TABLE ROLLBACK_TEST')
-        #self.connection._commit()
+        self.connection._commit()
 
         return count == 0
 

@@ -1,0 +1,13 @@
+Test what doesn't pass:
+----------------------
+
+test/regressiontests/model_fields/models.py
+   class BigD(models.Model):
+        d = models.DecimalField(max_digits=38, decimal_places=30)
+
+max_digits 38 and decimal_places = 30 are not supported by firebird
+
+
+
+
+

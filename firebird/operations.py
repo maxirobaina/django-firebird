@@ -3,8 +3,12 @@ from django.db.backends import BaseDatabaseOperations, util
 class DatabaseOperations(BaseDatabaseOperations):
     compiler_module = "firebird.compiler"
 
-    def __init__(self, connection):
-        super(DatabaseOperations, self).__init__(connection)
+    def __init__(self, connection, *args, **kwargs):
+        try:
+            super(DatabaseOperations, self).__init__(connection)
+        except TypeError:
+            super(DatabaseOperations, self).__init__(*args, **kwargs)
+
         self.connection = connection
 
     def _get_firebird_version(self):
@@ -23,13 +27,8 @@ class DatabaseOperations(BaseDatabaseOperations):
         trigger_name = get_autoinc_sequence_name(self, table)
         table_name = self.quote_name(table)
         column_name = self.quote_name(column)
-
-        if self.firebird_version[0] < 2:
-            sequence_sql = 'CREATE GENERATOR %s;' % sequence_name
-            next_value_sql = 'GEN_ID(%s, 1)' % sequence_name
-        else:
-            sequence_sql = 'CREATE SEQUENCE %s;' % sequence_name
-            next_value_sql = 'NEXT VALUE FOR %s' % sequence_name
+        sequence_sql = 'CREATE SEQUENCE %s;' % sequence_name
+        next_value_sql = 'NEXT VALUE FOR %s' % sequence_name
 
         trigger_sql = '\n'.join([
             'CREATE TRIGGER %(trigger_name)s FOR %(table_name)s',
@@ -38,7 +37,12 @@ class DatabaseOperations(BaseDatabaseOperations):
             '   IF(new.%(column_name)s IS NULL) THEN',
             '      new.%(column_name)s = %(next_value_sql)s;',
             'END'
-        ]) % locals()
+        ]) % {
+                'trigger_name': trigger_name,
+                'table_name': table_name,
+                'column_name': column_name,
+                'next_value_sql': next_value_sql
+        }
 
         return sequence_sql, trigger_sql
 
@@ -77,7 +81,8 @@ class DatabaseOperations(BaseDatabaseOperations):
         Returns the FOR UPDATE SQL clause to lock rows for an update operation.
         """
         # The nowait param depends on transaction setting
-        return 'FOR UPDATE WITH LOCK'
+        #return 'FOR UPDATE WITH LOCK'
+        return 'FOR UPDATE'
 
     def fulltext_search_sql(self, field_name):
         # We use varchar for TextFields so this is possible
@@ -96,15 +101,6 @@ class DatabaseOperations(BaseDatabaseOperations):
         if value is not None and field and field.get_internal_type() == 'DecimalField':
             value = util.typecast_decimal(field.format_number(value))
         return value
-
-    def ___value_to_db_datetime(self, value):
-        value = super(DatabaseOperations, self).value_to_db_datetime(value)
-        if isinstance(value, basestring):
-            #Replaces 6 digits microseconds to 4 digits allowed in Firebird
-            value = value[:24]
-        #return value
-        print value
-        return typeconv_dt.timestamp_conv_in(value)
 
     def year_lookup_bounds(self, value):
         first = '%s-01-01 00:00:00'
@@ -139,6 +135,9 @@ class DatabaseOperations(BaseDatabaseOperations):
     def savepoint_create_sql(self, sid):
         return "SAVEPOINT " + self.quote_name(sid)
 
+    def savepoint_commint_sql(self, sid):
+        return "RELEASE SAVEPOINT " + self.quote_name(sid)
+
     def savepoint_rollback_sql(self, sid):
         return "ROLLBACK TO " + self.quote_name(sid)
 
@@ -151,10 +150,7 @@ class DatabaseOperations(BaseDatabaseOperations):
         TABLE = style.SQL_TABLE
         FIELD = style.SQL_FIELD
         COLTYPE = style.SQL_COLTYPE
-        if self.firebird_version[0] < 2:
-            reset_value_sql = 'SET GENERATOR %(sequence_name)s TO '
-        else:
-            reset_value_sql = 'ALTER SEQUENCE %(sequence_name)s RESTART WITH '
+        reset_value_sql = 'ALTER SEQUENCE %(sequence_name)s RESTART WITH '
         procedure_sql = '\n'.join([
             '%s %s' % (KEYWORD('CREATE PROCEDURE'), TABLE('%(procedure_name)s')),
             KEYWORD('AS'),
