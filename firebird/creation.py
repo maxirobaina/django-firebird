@@ -71,6 +71,8 @@ class DatabaseCreation(BaseDatabaseCreation):
         return conn_params
 
     def _rollback_works(self):
+        """ DEPRECATED !!! """
+
         print "_rollback_works"
         cursor = self.connection.cursor()
         cursor.execute('CREATE TABLE ROLLBACK_TEST (X INT)')
@@ -88,7 +90,14 @@ class DatabaseCreation(BaseDatabaseCreation):
 
         return count == 0
 
-    def _create_database(self, test_database_name):
+    def _check_active_connection(self, verbosity):
+        if self.connection:
+            if verbosity >= 1:
+                print "Closing active connection"
+            self.connection.close()
+
+    def _create_database(self, test_database_name, verbosity):
+        self._check_active_connection(verbosity)
         params = self._get_connection_params(database=test_database_name)
         connection = Database.create_database("""
                         CREATE DATABASE '%(database)s'
@@ -98,16 +107,17 @@ class DatabaseCreation(BaseDatabaseCreation):
         )
         connection.execute_immediate("CREATE EXCEPTION teste '';")
         connection.commit()
-        #connection.close()
+        connection.close()
 
     def _create_test_db(self, verbosity, autoclobber):
-        "Internal implementation - creates the test db tables."
-        suffix = self.sql_table_creation_suffix()
+        """"
+        Internal implementation - creates the test db tables.
+        """
         test_database_name = self._get_test_db_name()
-        qn = self.connection.ops.quote_name
 
+        self._prepare_for_test_db_ddl()
         try:
-            self._create_database(test_database_name)
+            self._create_database(test_database_name, verbosity)
             if verbosity >= 1:
                 print "Database %s created..." % test_database_name
         except Exception, e:
@@ -121,7 +131,7 @@ class DatabaseCreation(BaseDatabaseCreation):
                     self._destroy_test_db(test_database_name, verbosity)
                     if verbosity >= 1:
                         print "Creating test database..."
-                    self._create_database(test_database_name)
+                    self._create_database(test_database_name, verbosity)
                     if verbosity >= 1:
                         print "Database %s created..." % test_database_name
 
@@ -134,9 +144,9 @@ class DatabaseCreation(BaseDatabaseCreation):
 
         return test_database_name
 
-
     def _destroy_test_db(self, test_database_name, verbosity):
+        self._check_active_connection(verbosity)
         connection = Database.connect(**self._get_connection_params(database=test_database_name))
         connection.drop_database()
-        #connection.close()
+        connection.close()
 

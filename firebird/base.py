@@ -16,6 +16,7 @@ from django.db import utils
 from django.db.backends import *
 from django.db.backends.signals import connection_created
 from django.utils.encoding import smart_str
+from django.utils.functional import cached_property
 
 from operations import DatabaseOperations
 from client import DatabaseClient
@@ -33,7 +34,11 @@ class DatabaseFeatures(BaseDatabaseFeatures):
     has_bulk_insert = False
     can_return_id_from_insert = True
     has_select_for_update = True
+    supports_tablespaces = False
 
+    @cached_property
+    def supports_transactions(self):
+        return True
 
 class DatabaseValidation(BaseDatabaseValidation):
     pass
@@ -107,7 +112,8 @@ class DatabaseWrapper(BaseDatabaseWrapper):
 
         return FirebirdCursorWrapper(self.connection.cursor(), self.encoding)
 
-    def get_server_version(self):
+    @cached_property
+    def server_version(self):
         """
         Access method for engine_version property.
         engine_version return a full version in string format
@@ -116,7 +122,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         if not self._server_version:
             if not self.connection:
                 self.cursor()
-            self._server_version = self.connection.server_version
+            self._server_version = self.connection.db_info(Database.isc_info_firebird_version)
         return self._server_version
 
 class FirebirdCursorWrapper(object):
@@ -135,8 +141,8 @@ class FirebirdCursorWrapper(object):
         if params is None:
             params = []
         try:
-            query = self.convert_query(query, len(params))
-            return self.cursor.execute(query, params)
+            q = self.convert_query(query, len(params))
+            return self.cursor.execute(q, params)
         except Database.IntegrityError, e:
             raise utils.IntegrityError, utils.IntegrityError(*self.error_info(e, query, params)), sys.exc_info()[2]
         except Database.DatabaseError, e:
@@ -148,8 +154,8 @@ class FirebirdCursorWrapper(object):
 
     def executemany(self, query, param_list):
         try:
-            query = self.convert_query(query, len(param_list[0]))
-            return self.cursor.executemany(query, param_list)
+            q = self.convert_query(query, len(param_list[0]))
+            return self.cursor.executemany(q, param_list)
         except Database.IntegrityError, e:
             raise utils.IntegrityError, utils.IntegrityError(*self.error_info(e, query, param_list[0])), sys.exc_info()[2]
         except Database.DatabaseError, e:

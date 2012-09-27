@@ -1,4 +1,7 @@
+from datetime import datetime
 from django.db.backends import BaseDatabaseOperations, util
+from django.utils.functional import cached_property
+from django.utils import six
 
 class DatabaseOperations(BaseDatabaseOperations):
     compiler_module = "firebird.compiler"
@@ -11,20 +14,20 @@ class DatabaseOperations(BaseDatabaseOperations):
 
         self.connection = connection
 
-    def _get_firebird_version(self):
+    @cached_property
+    def firebird_version(self):
         """
         Access method for firebird_version property.
         firebird_version return the version number in an object list format
         Useful for ask for just a part of a version number.
         (e.g. major version is firebird_version[0])
         """
-        server_version = self.connection.get_server_version()
+        server_version = self.connection.server_version
         return [int(val) for val in server_version.split()[-1].split('.')]
-    firebird_version = property(_get_firebird_version)
 
     def autoinc_sql(self, table, column):
         sequence_name = get_autoinc_sequence_name(self, table)
-        trigger_name = get_autoinc_sequence_name(self, table)
+        trigger_name = get_autoinc_trigger_name(self, table)
         table_name = self.quote_name(table)
         column_name = self.quote_name(column)
         sequence_sql = 'CREATE SEQUENCE %s;' % sequence_name
@@ -141,10 +144,54 @@ class DatabaseOperations(BaseDatabaseOperations):
     def savepoint_rollback_sql(self, sid):
         return "ROLLBACK TO " + self.quote_name(sid)
 
+    def _get_sequence_reset_sql(self, style):
+        return """
+        SELECT gen_id(%(sequence_name)s, coalesce(max(%(column_name)s), 0) - gen_id(%(sequence_name)s, 0) )
+        FROM %(table_name)s;
+        """
+
+    def sequence_reset_by_name_sql(self, style, sequences):
+        sql = []
+        for sequence_info in sequences:
+            sequence_name = self.get_sequence_name(sequence_info['table'])
+            table_name = self.quote_name(sequence_info['table'])
+            column_name = self.quote_name(sequence_info['column'] or 'id')
+            query = self._get_sequence_reset_sql(style) % {'sequence': sequence_name,
+                                                           'table': table_name,
+                                                           'column': column_name}
+            sql.append(query)
+        return sql
+
+    def __sequence_reset_sql(self, style, model_list):
+        from django.db import models
+
+        output, procedures = [], []
+        reset_value_sql = self._get_sequence_reset_sql(style)
+
+        for model in model_list:
+            for f in model._meta.local_fields:
+                if isinstance(f, models.AutoField):
+                    table_name = self.quote_name(model._meta.db_table)
+                    column_name = self.quote_name(f.column)
+                    sequence_name = self.get_sequence_name(model._meta.db_table)
+                    output.append(reset_value_sql % {'sequence_name': sequence_name,
+                                                     'column_name': column_name,
+                                                     'table_name': table_name})
+                    break
+            for f in model._meta.many_to_many:
+                if not f.rel.through:
+                    table_name = self.quote_name(f.m2m_db_table())
+                    column_name = self.quote_name(f.column)
+                    sequence_name = get_autoinc_sequence_name(self, f.m2m_db_table())
+                    output.append(reset_value_sql % {'sequence_name': sequence_name,
+                                                     'column_name': column_name,
+                                                     'table_name': table_name})
+        return output
+
+
     def sequence_reset_sql(self, style, model_list):
         from django.db import models
 
-        qn = self.quote_name
         output, procedures = [], []
         KEYWORD = style.SQL_KEYWORD
         TABLE = style.SQL_TABLE
@@ -186,9 +233,9 @@ class DatabaseOperations(BaseDatabaseOperations):
                     output.append(procedure_sql % locals())
                     procedures.append(procedure_name)
         for procedure in procedures:
-            output.append('%s %s' % (KEYWORD('EXECUTE PROCEDURE'), TABLE(procedure)))
+            output.append('%s %s;' % (KEYWORD('EXECUTE PROCEDURE'), TABLE(procedure)))
         for procedure in procedures:
-            output.append('%s %s' % (KEYWORD('DROP PROCEDURE'), TABLE(procedure)))
+            output.append('%s %s;' % (KEYWORD('DROP PROCEDURE'), TABLE(procedure)))
 
         return output
 
@@ -201,18 +248,38 @@ class DatabaseOperations(BaseDatabaseOperations):
                      ) for table in tables]
             for generator_info in sequences:
                 table_name = generator_info['table']
-                query = "%s %s %s 0;" % (style.SQL_KEYWORD('SET GENERATOR'),
-                    self.get_generator_name(table_name), style.SQL_KEYWORD('TO'))
+                sequence_name =  self.get_sequence_name(table_name)
+                query = "%s %s %s 0;" % (
+                        style.SQL_KEYWORD('ALTER SEQUENCE'),
+                        sequence_name,
+                        style.SQL_KEYWORD('RESTART WITH')
+                )
                 sql.append(query)
             return sql
         else:
             return []
 
     def drop_sequence_sql(self, table):
-        return 'DROP GENERATOR %s' % self.get_generator_name(table)
+        return 'DROP SEQUENCE %s' % self.get_generator_name(table)
 
-    def get_generator_name(self, table_name):
+    def get_sequence_name(self, table_name):
         return get_autoinc_sequence_name(self, table_name)
+
+    def value_to_db_datetime(self, value):
+        """
+        Transform a datetime value to an object compatible with what is expected
+        by the backend driver for datetime columns.
+        """
+        if value is None:
+            return None
+
+        if isinstance(value, datetime):
+            value = str(value)
+        if isinstance(value, basestring):
+            #Replaces 6 digits microseconds to 4 digits allowed in Firebird
+            value = value[:24]
+        return six.text_type(value)
+
 
 def get_autoinc_sequence_name(ops, table):
     return ops.quote_name('%s_SQ' % util.truncate_name(table, ops.max_name_length() - 3))
