@@ -1,6 +1,8 @@
 Test what doesn't pass:
 ----------------------
 
+1. Invalid field definition:
+ 
 test/regressiontests/model_fields/models.py
    class BigD(models.Model):
         d = models.DecimalField(max_digits=38, decimal_places=30)
@@ -8,6 +10,10 @@ test/regressiontests/model_fields/models.py
 max_digits 38 and decimal_places = 30 are not supported by firebird
 
 
+
+2. Index sizes:
+
+Firebird fails on some index definitions depending on the CHARSET specified. 
 
 
 

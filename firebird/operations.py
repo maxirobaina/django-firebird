@@ -1,7 +1,11 @@
 from datetime import datetime
+
+from django.conf import settings
 from django.db.backends import BaseDatabaseOperations, util
 from django.utils.functional import cached_property
 from django.utils import six
+from django.utils import timezone
+
 
 class DatabaseOperations(BaseDatabaseOperations):
     compiler_module = "firebird.compiler"
@@ -273,11 +277,28 @@ class DatabaseOperations(BaseDatabaseOperations):
         if value is None:
             return None
 
+        # Firebird doesn't support tz-aware datetimes
+        if timezone.is_aware(value):
+            if settings.USE_TZ:
+                value = value.astimezone(timezone.utc).replace(tzinfo=None)
+            else:
+                raise ValueError("Firebird backend does not support timezone-aware datetimes when USE_TZ is False.")
+
         if isinstance(value, datetime):
             value = str(value)
         if isinstance(value, basestring):
             #Replaces 6 digits microseconds to 4 digits allowed in Firebird
             value = value[:24]
+        return six.text_type(value)
+
+    def value_to_db_time(self, value):
+        if value is None:
+            return None
+
+        # Firebird doesn't support tz-aware times
+        if timezone.is_aware(value):
+            raise ValueError("Firebird backend does not support timezone-aware times.")
+
         return six.text_type(value)
 
 
