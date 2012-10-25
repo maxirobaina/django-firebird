@@ -35,6 +35,7 @@ class DatabaseFeatures(BaseDatabaseFeatures):
     can_return_id_from_insert = True
     has_select_for_update = True
     supports_tablespaces = False
+    supports_timezones = False
 
     @cached_property
     def supports_transactions(self):

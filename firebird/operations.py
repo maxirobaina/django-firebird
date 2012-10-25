@@ -100,6 +100,14 @@ class DatabaseOperations(BaseDatabaseOperations):
         cursor.execute('SELECT GEN_ID(%s, 0) FROM rdb$database' % get_autoinc_sequence_name(self, table))
         return cursor.fetchone()[0]
 
+    def max_in_list_size(self):
+        """
+        Returns the maximum number of items that can be passed in a single 'IN'
+        list condition, or None if the backend does not impose a limit.
+        Django break up the params list into an OR of manageable chunks.
+        """
+        return 1500
+
     def max_name_length(self):
         return 31
 
@@ -167,6 +175,9 @@ class DatabaseOperations(BaseDatabaseOperations):
         return sql
 
     def __sequence_reset_sql(self, style, model_list):
+        """
+        Attempt to make a reset sequence without create an extra store procerdure
+        """
         from django.db import models
 
         output, procedures = [], []

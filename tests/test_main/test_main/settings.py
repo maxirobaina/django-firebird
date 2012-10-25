@@ -12,7 +12,7 @@ MANAGERS = ADMINS
 DATABASES = {
     'default': {
         'ENGINE': 'firebird',
-        'NAME': 'fb_default.fdb',
+        'NAME': 'django-test',
         'USER': 'SYSDBA',
         'PASSWORD': 'masterkey',
         'HOST': '127.0.0.1',
@@ -56,7 +56,7 @@ USE_I18N = True
 USE_L10N = True
 
 # If you set this to False, Django will not use timezone-aware datetimes.
-USE_TZ = True
+USE_TZ = False
 
 # Absolute filesystem path to the directory that will hold user-uploaded files.
 # Example: "/var/www/example.com/media/"
