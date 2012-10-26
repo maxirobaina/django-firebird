@@ -112,9 +112,16 @@ class DatabaseOperations(BaseDatabaseOperations):
         return 31
 
     def convert_values(self, value, field):
-        value = super(DatabaseOperations, self).convert_values(value, field)
         if value is not None and field and field.get_internal_type() == 'DecimalField':
             value = util.typecast_decimal(field.format_number(value))
+        elif value in (1, 0) and field and field.get_internal_type() in ('BooleanField', 'NullBooleanField'):
+            value = bool(value)
+        # Force floats to the correct type
+        elif value is not None and field and field.get_internal_type() == 'FloatField':
+            value = float(value)
+        elif value is not None and field and (field.get_internal_type().endswith('IntegerField')
+                                              or field.get_internal_type() == 'AutoField'):
+            return int(value)
         return value
 
     def year_lookup_bounds(self, value):
