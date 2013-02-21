@@ -1,7 +1,6 @@
-django-firebird
-===============
+# django-firebird
 
-Firebird SQL backend for django
+## Firebird SQL backend for django
 
 This version of django-firebird is working with fbd [1] .Therefore it will work only with firebird 2.x and later.
 Also, the current master version of this repository is being developed under django 1.5. And we consider the driver almost stable.
@@ -20,7 +19,19 @@ http://code.google.com/p/django-firebird/
 
 [1] http://pypi.python.org/pypi/fdb/
 
+## Requirements
+  * Python 2.6+ 
+  * Django 1.5+
+  * fdb (http://pypi.python.org/pypi/fdb/)
 
+## Instalation
+
+** From repository **
+
+    sudo git clone git://github.com/maxirobaina/django-firebird.git 
+    python setup.py install
+
+** Manual Instalation **
 Instructions for Ubuntu/Debian 
 I assume you have installed django from source with python setup.py install 
 
@@ -36,13 +47,14 @@ I assume you have installed django from source with python setup.py install
     sudo ln -s /usr/local/lib/python2.7/dist-packages/django-firebird/firebird
 
     DATABASES = {
-    'default': {
-      'ENGINE' : 'django.db.backends.firebird',
-    'NAME' : '/var/lib/firebird/2.5/data/rdbgraph.fdb', # Path to database or db alias
-    'USER' : 'SYSDBA',           # Your db user
-    'PASSWORD' : '*****',    # db user password
-    'HOST' : '127.0.0.1',        # Your host machine
-    'PORT' : '3050',             # If is empty, use default 3050
-    #'OPTIONS' : {'charset':'ISO8859_1'}  
+        'default': {
+            'ENGINE' : 'django.db.backends.firebird',
+            'NAME' : '/var/lib/firebird/2.5/data/rdbgraph.fdb', # Path to database or db alias
+            'USER' : 'SYSDBA',           # Your db user
+            'PASSWORD' : '*****',    # db user password
+            'HOST' : '127.0.0.1',        # Your host machine
+            'PORT' : '3050',             # If is empty, use default 3050
+            #'OPTIONS' : {'charset':'ISO8859_1'}  
+        }
     }
-    }
+
