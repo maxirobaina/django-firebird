@@ -27,6 +27,7 @@ http://code.google.com/p/django-firebird/
 ## Instalation
 
 **Using pip**
+
     pip install django-fiebird
 
 **From repository**
@@ -49,9 +50,13 @@ I assume you have installed django from source with python setup.py install
 
     sudo ln -s /usr/local/lib/python2.7/dist-packages/django-firebird/firebird
 
+## Configuration
+
+Modify your setting.py 
+
     DATABASES = {
         'default': {
-            'ENGINE' : 'django.db.backends.firebird',
+            'ENGINE' : 'firebird',
             'NAME' : '/var/lib/firebird/2.5/data/rdbgraph.fdb', # Path to database or db alias
             'USER' : 'SYSDBA',           # Your db user
             'PASSWORD' : '*****',    # db user password
