@@ -29,7 +29,7 @@ setup(
         'License :: OSI Approved :: BSD License',
         'Operating System :: OS Independent',
         'Programming Language :: Python',
-        'Topic :: Databases',
+        'Topic :: Database',
         'Topic :: Internet :: WWW/HTTP',
     ],
     zip_safe=False,
