@@ -26,6 +26,9 @@ http://code.google.com/p/django-firebird/
 
 ## Instalation
 
+**Using pip**
+    pip install django-fiebird
+
 **From repository**
 
     sudo git clone git://github.com/maxirobaina/django-firebird.git 
