@@ -3,7 +3,7 @@
 ## Firebird SQL backend for django
 
 This version of django-firebird is working with *fbd* [1] .Therefore it will work only with firebird 2.x and later.
-Also, the current master version of this repository is being developed under django 1.5. And we consider the driver almost stable.
+Also, the current master version of this repository is being developed under django 1.5. And we consider the driver stable.
 
 Why the change?
 fbd is the next official stable python-firebird driver, also it has support for python 3.
