@@ -210,7 +210,6 @@ class DatabaseOperations(BaseDatabaseOperations):
                                                      'table_name': table_name})
         return output
 
-
     def sequence_reset_sql(self, style, model_list):
         from django.db import models
 
@@ -263,14 +262,14 @@ class DatabaseOperations(BaseDatabaseOperations):
 
     def sql_flush(self, style, tables, sequences):
         if tables:
-            sql = ['%s %s %s;' % \
+            sql = ['%s %s %s;' %
                     (style.SQL_KEYWORD('DELETE'),
                      style.SQL_KEYWORD('FROM'),
                      style.SQL_TABLE(self.quote_name(table))
                      ) for table in tables]
             for generator_info in sequences:
                 table_name = generator_info['table']
-                sequence_name =  self.get_sequence_name(table_name)
+                sequence_name = self.get_sequence_name(table_name)
                 query = "%s %s %s 0;" % (
                         style.SQL_KEYWORD('ALTER SEQUENCE'),
                         sequence_name,
@@ -304,7 +303,7 @@ class DatabaseOperations(BaseDatabaseOperations):
 
         if isinstance(value, datetime):
             value = str(value)
-        if isinstance(value, basestring):
+        if isinstance(value, six.string_types):
             #Replaces 6 digits microseconds to 4 digits allowed in Firebird
             value = value[:24]
         return six.text_type(value)

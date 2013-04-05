@@ -2,6 +2,7 @@ import sys
 import fdb as Database
 
 from django.db.backends.creation import BaseDatabaseCreation
+from django.utils.six.moves import input
 
 TEST_MODE = 0
 
@@ -70,30 +71,10 @@ class DatabaseCreation(BaseDatabaseCreation):
         conn_params.update(overrides)
         return conn_params
 
-    def _rollback_works(self):
-        """ DEPRECATED !!! """
-
-        print "_rollback_works"
-        cursor = self.connection.cursor()
-        cursor.execute('CREATE TABLE ROLLBACK_TEST (X INT)')
-        self.connection._commit()
-
-        cursor.execute('INSERT INTO ROLLBACK_TEST (X) VALUES (8)')
-        self.connection._rollback()
-
-        cursor.execute('SELECT COUNT(X) FROM ROLLBACK_TEST')
-        count, = cursor.fetchone()
-        self.connection._commit()
-
-        cursor.execute('DROP TABLE ROLLBACK_TEST')
-        self.connection._commit()
-
-        return count == 0
-
     def _check_active_connection(self, verbosity):
         if self.connection:
             if verbosity >= 1:
-                print "Closing active connection"
+                print("Closing active connection")
             self.connection.close()
 
     def _create_database(self, test_database_name, verbosity):
@@ -119,27 +100,26 @@ class DatabaseCreation(BaseDatabaseCreation):
         try:
             self._create_database(test_database_name, verbosity)
             if verbosity >= 1:
-                print "Database %s created..." % test_database_name
-        except Exception, e:
+                print("Database %s created..." % test_database_name)
+        except Exception as e:
             sys.stderr.write("Got an error creating the test database: %s\n" % e)
             if not autoclobber:
-                confirm = raw_input("Type 'yes' if you would like to try deleting the test database '%s', or 'no' to cancel: " % test_database_name)
+                confirm = input("Type 'yes' if you would like to try deleting the test database '%s', or 'no' to cancel: " % test_database_name)
             if autoclobber or confirm == 'yes':
                 try:
                     if verbosity >= 1:
-                        print "Destroying old test database..."
+                        print("Destroying old test database...")
                     self._destroy_test_db(test_database_name, verbosity)
                     if verbosity >= 1:
-                        print "Creating test database..."
+                        print("Creating test database...")
                     self._create_database(test_database_name, verbosity)
                     if verbosity >= 1:
-                        print "Database %s created..." % test_database_name
-
-                except Exception, e:
+                        print("Database %s created..." % test_database_name)
+                except Exception as e:
                     sys.stderr.write("Got an error recreating the test database: %s\n" % e)
                     sys.exit(2)
             else:
-                print "Tests cancelled."
+                print("Tests cancelled.")
                 sys.exit(1)
 
         return test_database_name

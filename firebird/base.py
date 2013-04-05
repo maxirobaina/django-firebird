@@ -6,7 +6,7 @@ import sys
 
 try:
     import fdb as Database
-except ImportError, e:
+except ImportError as e:
     from django.core.exceptions import ImproperlyConfigured
     raise ImproperlyConfigured("Error loading fdb module: %s" % e)
 
@@ -17,11 +17,12 @@ from django.db.backends import *
 from django.db.backends.signals import connection_created
 from django.utils.encoding import smart_str
 from django.utils.functional import cached_property
+from django.utils import six
 
-from operations import DatabaseOperations
-from client import DatabaseClient
-from creation import DatabaseCreation
-from introspection import DatabaseIntrospection
+from .operations import DatabaseOperations
+from .client import DatabaseClient
+from .creation import DatabaseCreation
+from .introspection import DatabaseIntrospection
 
 DatabaseError = Database.DatabaseError
 IntegrityError = Database.IntegrityError
@@ -41,8 +42,10 @@ class DatabaseFeatures(BaseDatabaseFeatures):
     def supports_transactions(self):
         return True
 
+
 class DatabaseValidation(BaseDatabaseValidation):
     pass
+
 
 class DatabaseWrapper(BaseDatabaseWrapper):
     vendor = 'firebird'
@@ -126,6 +129,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
             self._server_version = self.connection.db_info(Database.isc_info_firebird_version)
         return self._server_version
 
+
 class FirebirdCursorWrapper(object):
     """
     Django uses "format" style placeholders, but firebird uses "qmark" style.
@@ -144,27 +148,27 @@ class FirebirdCursorWrapper(object):
         try:
             q = self.convert_query(query, len(params))
             return self.cursor.execute(q, params)
-        except Database.IntegrityError, e:
-            raise utils.IntegrityError, utils.IntegrityError(*self.error_info(e, query, params)), sys.exc_info()[2]
-        except Database.DatabaseError, e:
+        except Database.IntegrityError as e:
+            six.reraise(utils.IntegrityError, utils.IntegrityError(*self.error_info(e, query, params)), sys.exc_info()[2])
+        except Database.DatabaseError as e:
             # Map some error codes to IntegrityError, since they seem to be
             # misclassified and Django would prefer the more logical place.
             if e[0] in self.codes_for_integrityerror:
-                raise utils.IntegrityError, utils.IntegrityError(*self.error_info(e, query, params)), sys.exc_info()[2]
-            raise utils.DatabaseError, utils.DatabaseError(*self.error_info(e, query, params)), sys.exc_info()[2]
+                six.reraise(utils.IntegrityError, utils.IntegrityError(*self.error_info(e, query, params)), sys.exc_info()[2])
+            six.reraise(utils.DatabaseError, utils.DatabaseError(*self.error_info(e, query, params)), sys.exc_info()[2])
 
     def executemany(self, query, param_list):
         try:
             q = self.convert_query(query, len(param_list[0]))
             return self.cursor.executemany(q, param_list)
-        except Database.IntegrityError, e:
-            raise utils.IntegrityError, utils.IntegrityError(*self.error_info(e, query, param_list[0])), sys.exc_info()[2]
-        except Database.DatabaseError, e:
+        except Database.IntegrityError as e:
+            six.reraise(utils.IntegrityError, utils.IntegrityError(*self.error_info(e, query, param_list[0])), sys.exc_info()[2])
+        except Database.DatabaseError as e:
             # Map some error codes to IntegrityError, since they seem to be
             # misclassified and Django would prefer the more logical place.
             if e[0] in self.codes_for_integrityerror:
-                raise utils.IntegrityError, utils.IntegrityError(*self.error_info(e, query, param_list[0])), sys.exc_info()[2]
-            raise utils.DatabaseError, utils.DatabaseError(*self.error_info(e, query, param_list[0])), sys.exc_info()[2]
+                six.reraise(utils.IntegrityError, utils.IntegrityError(*self.error_info(e, query, param_list[0])), sys.exc_info()[2])
+            six.reraise(utils.DatabaseError, utils.DatabaseError(*self.error_info(e, query, param_list[0])), sys.exc_info()[2])
 
     def convert_query(self, query, num_params):
         # kinterbasdb tries to convert the passed SQL to string.
