@@ -136,6 +136,7 @@ INSTALLED_APPS = (
     # 'django.contrib.admindocs',
     'test_base',
     'model_fields',
+    'transactions',
 )
 
 # A sample logging configuration. The only tangible logging

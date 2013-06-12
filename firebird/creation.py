@@ -17,6 +17,7 @@ class DatabaseCreation(BaseDatabaseCreation):
 
     data_types = {
         'AutoField':         'integer',
+        'BinaryField':       'blob sub_type 0',
         'BooleanField':      'smallint',
         'CharField':         'varchar(%(max_length)s)',
         'CommaSeparatedIntegerField': 'varchar(%(max_length)s)',
@@ -40,7 +41,8 @@ class DatabaseCreation(BaseDatabaseCreation):
         'TimeField':         'time',
     }
 
-    def sql_for_inline_foreign_key_references(self, field, known_models, style):
+    #def sql_for_inline_foreign_key_references(self, field, known_models, style):
+    def sql_for_inline_foreign_key_references(self, model, field, known_models, style):
         # Always pending
         return [], TEST_MODE < 2
 
@@ -96,7 +98,7 @@ class DatabaseCreation(BaseDatabaseCreation):
         """
         test_database_name = self._get_test_db_name()
 
-        self._prepare_for_test_db_ddl()
+        #self._prepare_for_test_db_ddl()
         try:
             self._create_database(test_database_name, verbosity)
             if verbosity >= 1:

@@ -35,8 +35,12 @@ class DatabaseFeatures(BaseDatabaseFeatures):
     has_bulk_insert = False
     can_return_id_from_insert = True
     has_select_for_update = True
+    has_select_for_update_nowait = False
     supports_tablespaces = False
     supports_timezones = False
+    supports_long_model_names = False
+    has_zoneinfo_database = False
+    uses_savepoints = True
 
     @cached_property
     def supports_transactions(self):
@@ -66,6 +70,8 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         'iregex': "SIMILAR TO %s", # Case Sensitive depends on collation
     }
 
+    Database = Database
+
     def __init__(self, *args, **kwargs):
         super(DatabaseWrapper, self).__init__(*args, **kwargs)
 
@@ -73,48 +79,97 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         self._db_charset = None
         self.encoding = None
 
-        try:
-            self.features = DatabaseFeatures()
-        except TypeError:
-            self.features = DatabaseFeatures(self)
+        opts = self.settings_dict["OPTIONS"]
+        RC = Database.ISOLATION_LEVEL_READ_COMMITED
+        self.isolation_level = opts.get('isolation_level', RC)
 
-        try:
-            self.ops = DatabaseOperations()
-        except TypeError:
-            self.ops = DatabaseOperations(self)
-
+        self.features = DatabaseFeatures(self)
+        self.ops = DatabaseOperations(self)
         self.client = DatabaseClient(self)
         self.creation = DatabaseCreation(self)
         self.introspection = DatabaseIntrospection(self)
         self.validation = DatabaseValidation(self)
 
-    def _cursor(self):
-        if self.connection is None:
-            settings_dict = self.settings_dict
-            if settings_dict['NAME'] == '':
-                from django.core.exceptions import ImproperlyConfigured
-                raise ImproperlyConfigured(
-                        "settings.DATABASES is improperly configured. "
-                        "Please supply the NAME value.")
+    ##### Backend-specific methods for creating connections and cursors #####
 
-            conn_params = {'charset': 'UTF8'}
-            conn_params['dsn'] = settings_dict['NAME']
-            if settings_dict['HOST']:
-                conn_params['dsn'] = ('%s:%s') % (settings_dict['HOST'], conn_params['dsn'])
-            if settings_dict['PORT']:
-                conn_params['port'] = settings_dict['PORT']
-            if settings_dict['USER']:
-                conn_params['user'] = settings_dict['USER']
-            if settings_dict['PASSWORD']:
-                conn_params['password'] = settings_dict['PASSWORD']
-            options = settings_dict['OPTIONS'].copy()
-            conn_params.update(options)
-            self._db_charset = conn_params.get('charset')
-            self.encoding = charset_map.get(self._db_charset, 'utf_8')
-            self.connection = Database.connect(**conn_params)
-            connection_created.send(sender=self.__class__)
+    def get_connection_params(self):
+        """Returns a dict of parameters suitable for get_new_connection."""
+        settings_dict = self.settings_dict
+        if settings_dict['NAME'] == '':
+            from django.core.exceptions import ImproperlyConfigured
+            raise ImproperlyConfigured(
+                    "settings.DATABASES is improperly configured. "
+                    "Please supply the NAME value.")
 
+        conn_params = {'charset': 'UTF8'}
+        conn_params['dsn'] = settings_dict['NAME']
+        if settings_dict['HOST']:
+            conn_params['dsn'] = ('%s:%s') % (settings_dict['HOST'], conn_params['dsn'])
+        if settings_dict['PORT']:
+            conn_params['port'] = settings_dict['PORT']
+        if settings_dict['USER']:
+            conn_params['user'] = settings_dict['USER']
+        if settings_dict['PASSWORD']:
+            conn_params['password'] = settings_dict['PASSWORD']
+        options = settings_dict['OPTIONS'].copy()
+        conn_params.update(options)
+
+        self._db_charset = conn_params.get('charset')
+        self.encoding = charset_map.get(self._db_charset, 'utf_8')
+
+        return conn_params
+
+    def get_new_connection(self, conn_params):
+        """Opens a connection to the database."""
+        return Database.connect(**conn_params)
+
+    def init_connection_state(self):
+        """Initializes the database connection settings."""
+        pass
+
+    def create_cursor(self):
+        """Creates a cursor. Assumes that a connection is established."""
         return FirebirdCursorWrapper(self.connection.cursor(), self.encoding)
+
+    ##### Backend-specific transaction management methods #####
+
+    def _set_autocommit(self, autocommit):
+        """
+        Backend-specific implementation to enable or disable autocommit.
+
+        FDB doesn't support auto-commit feature directly, but developers may
+        achieve the similar result using explicit transaction start, taking
+        advantage of default_action and its default value (commit).
+        See:
+        http://www.firebirdsql.org/file/documentation/drivers_documentation/python/fdb/usage-guide.html#auto-commit
+
+        Pay attention at _cursor() method below
+        """
+        pass
+
+    ##### Backend-specific wrappers for PEP-249 connection methods #####
+
+    def _close(self):
+        if self.connection is not None:
+            with self.wrap_database_errors():
+                if self.autocommit == True:
+                    self.connection.commit()
+                return self.connection.close()
+
+    ##### Connection termination handling #####
+
+    def is_usable(self):
+        """
+        Tests if the database connection is usable.
+        This function may assume that self.connection is not None.
+        """
+        try:
+            cur = self.connection.cursor()
+            cur.execute('SELECT 1 FROM RDB$DATABASE')
+        except DatabaseError:
+            return False
+        else:
+            return True
 
     @cached_property
     def server_version(self):
@@ -153,7 +208,8 @@ class FirebirdCursorWrapper(object):
         except Database.DatabaseError as e:
             # Map some error codes to IntegrityError, since they seem to be
             # misclassified and Django would prefer the more logical place.
-            if e[0] in self.codes_for_integrityerror:
+            # fdb: raise exception as tuple with (error_msg, sqlcode, error_code)
+            if e.args[1] in self.codes_for_integrityerror:
                 six.reraise(utils.IntegrityError, utils.IntegrityError(*self.error_info(e, query, params)), sys.exc_info()[2])
             six.reraise(utils.DatabaseError, utils.DatabaseError(*self.error_info(e, query, params)), sys.exc_info()[2])
 
@@ -166,7 +222,8 @@ class FirebirdCursorWrapper(object):
         except Database.DatabaseError as e:
             # Map some error codes to IntegrityError, since they seem to be
             # misclassified and Django would prefer the more logical place.
-            if e[0] in self.codes_for_integrityerror:
+            # fdb: raise exception as tuple with (error_msg, sqlcode, error_code)
+            if e.args[1] in self.codes_for_integrityerror:
                 six.reraise(utils.IntegrityError, utils.IntegrityError(*self.error_info(e, query, param_list[0])), sys.exc_info()[2])
             six.reraise(utils.DatabaseError, utils.DatabaseError(*self.error_info(e, query, param_list[0])), sys.exc_info()[2])
 
@@ -179,7 +236,7 @@ class FirebirdCursorWrapper(object):
         return smart_str(query % tuple("?" * num_params), self.encoding)
 
     def error_info(self, e, q, p):
-        return tuple([e[0], '%s -- %s' % (e[1], q % tuple(p))])
+        return tuple([e.args[0], '%s -- %s' % (e.args[1], q % tuple(p))])
 
     def __getattr__(self, attr):
         if attr in self.__dict__:

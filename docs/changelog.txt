@@ -1,0 +1,23 @@
+Changelog
+=========
+
+v1.6 alpha (In Development)
+---------------------
+
+- Support for Django v1.6.
+
+
+v1.5.1
+------
++ Complete config of DatabaseFeatures
++ Fixes for Python 3 support
+
+
+v1.5 
+----
++ Moved repository from google http://code.google.com/p/django-firebird/
++ Initial version with replacement of kinterbasdb by fdb
++ Added custom tests
++ Fixed db introspection issues #2
+
+

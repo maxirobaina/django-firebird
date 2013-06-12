@@ -16,4 +16,9 @@ max_digits 38 and decimal_places = 30 are not supported by firebird
 Firebird fails on some index definitions depending on the CHARSET specified. 
 
 
+3. Autocommit:
 
+FDB doesn’t support auto-commit feature directly, but developers may achieve the similar result using explicit transaction start, taking advantage of default_action and its default value (commit).
+
+See
+http://www.firebirdsql.org/file/documentation/drivers_documentation/python/fdb/usage-guide.html#auto-commit

@@ -16,7 +16,7 @@ class DatabaseOperations(BaseDatabaseOperations):
         except TypeError:
             super(DatabaseOperations, self).__init__(*args, **kwargs)
 
-        self.connection = connection
+        #self.connection = connection
 
     @cached_property
     def firebird_version(self):
@@ -110,6 +110,9 @@ class DatabaseOperations(BaseDatabaseOperations):
 
     def max_name_length(self):
         return 31
+
+    def no_limit_value(self):
+        return None
 
     def convert_values(self, value, field):
         if value is not None and field and field.get_internal_type() == 'DecimalField':
@@ -260,7 +263,7 @@ class DatabaseOperations(BaseDatabaseOperations):
 
         return output
 
-    def sql_flush(self, style, tables, sequences):
+    def sql_flush(self, style, tables, sequences, allow_cascade=False):
         if tables:
             sql = ['%s %s %s;' %
                     (style.SQL_KEYWORD('DELETE'),
