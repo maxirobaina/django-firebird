@@ -153,7 +153,7 @@ class FirebirdCursorWrapper(object):
         except Database.DatabaseError as e:
             # Map some error codes to IntegrityError, since they seem to be
             # misclassified and Django would prefer the more logical place.
-            if e[0] in self.codes_for_integrityerror:
+            if e.args[1] in self.codes_for_integrityerror:
                 six.reraise(utils.IntegrityError, utils.IntegrityError(*self.error_info(e, query, params)), sys.exc_info()[2])
             six.reraise(utils.DatabaseError, utils.DatabaseError(*self.error_info(e, query, params)), sys.exc_info()[2])
 
@@ -166,7 +166,7 @@ class FirebirdCursorWrapper(object):
         except Database.DatabaseError as e:
             # Map some error codes to IntegrityError, since they seem to be
             # misclassified and Django would prefer the more logical place.
-            if e[0] in self.codes_for_integrityerror:
+            if e.args[1] in self.codes_for_integrityerror:
                 six.reraise(utils.IntegrityError, utils.IntegrityError(*self.error_info(e, query, param_list[0])), sys.exc_info()[2])
             six.reraise(utils.DatabaseError, utils.DatabaseError(*self.error_info(e, query, param_list[0])), sys.exc_info()[2])
 
@@ -179,7 +179,7 @@ class FirebirdCursorWrapper(object):
         return smart_str(query % tuple("?" * num_params), self.encoding)
 
     def error_info(self, e, q, p):
-        return tuple([e[0], '%s -- %s' % (e[1], q % tuple(p))])
+        return tuple([e.args[0], '%s -- %s' % (e.args[1], q % tuple(p))])
 
     def __getattr__(self, attr):
         if attr in self.__dict__:
