@@ -66,3 +66,13 @@ Modify your setting.py
         }
     }
 
+## Contributing
+
+Code and issues is in GitHub:
+
+    https://github.com/maxirobaina/django-firebird
+
+We also have a mailing list:
+
+    http://groups.google.com/group/django-firebird-dev
+
