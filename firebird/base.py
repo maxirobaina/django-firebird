@@ -36,11 +36,13 @@ class DatabaseFeatures(BaseDatabaseFeatures):
     can_return_id_from_insert = True
     has_select_for_update = True
     has_select_for_update_nowait = False
+    supports_forward_references = False
     supports_tablespaces = False
-    supports_timezones = False
     supports_long_model_names = False
+    supports_timezones = False
     has_zoneinfo_database = False
     uses_savepoints = True
+    supports_paramstyle_pyformat = False
 
     @cached_property
     def supports_transactions(self):
@@ -143,7 +145,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         See:
         http://www.firebirdsql.org/file/documentation/drivers_documentation/python/fdb/usage-guide.html#auto-commit
 
-        Pay attention at _cursor() method below
+        Pay attention at _close() method below
         """
         pass
 
@@ -151,7 +153,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
 
     def _close(self):
         if self.connection is not None:
-            with self.wrap_database_errors():
+            with self.wrap_database_errors:
                 if self.autocommit == True:
                     self.connection.commit()
                 return self.connection.close()
