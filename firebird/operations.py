@@ -16,8 +16,6 @@ class DatabaseOperations(BaseDatabaseOperations):
         except TypeError:
             super(DatabaseOperations, self).__init__(*args, **kwargs)
 
-        #self.connection = connection
-
     @cached_property
     def firebird_version(self):
         """
