@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 from firebird import VERSION
 
 
-with open('README.md') as readme:
+with open('README.rst') as readme:
     __doc__ = readme.read()
 
 
