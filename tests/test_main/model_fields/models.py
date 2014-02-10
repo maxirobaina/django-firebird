@@ -1,17 +1,12 @@
 import os
 import tempfile
 
-# Try to import PIL in either of the two ways it can end up installed.
-# Checking for the existence of Image is enough for CPython, but for PyPy,
-# you need to check for the underlying modules.
+from django.core.exceptions import ImproperlyConfigured
 
 try:
-    from PIL import Image, _imaging
-except ImportError:
-    try:
-        import Image, _imaging
-    except ImportError:
-        Image = None
+    from django.utils.image import Image
+except ImproperlyConfigured:
+    Image = None
 
 from django.core.files.storage import FileSystemStorage
 from django.db import models
@@ -64,8 +59,13 @@ class NullBooleanModel(models.Model):
     nbfield = models.NullBooleanField()
 
 class BooleanModel(models.Model):
-    bfield = models.BooleanField()
+    bfield = models.BooleanField(default=None)
     string = models.CharField(max_length=10, default='abc')
+
+class FksToBooleans(models.Model):
+    """Model wih FKs to models with {Null,}BooleanField's, #15040"""
+    bf = models.ForeignKey(BooleanModel)
+    nbf = models.ForeignKey(NullBooleanModel)
 
 class RenamedField(models.Model):
     modelname = models.IntegerField(name="fieldname", choices=((1,'One'),))
@@ -73,7 +73,7 @@ class RenamedField(models.Model):
 class VerboseNameField(models.Model):
     id = models.AutoField("verbose pk", primary_key=True)
     field1 = models.BigIntegerField("verbose field1")
-    field2 = models.BooleanField("verbose field2")
+    field2 = models.BooleanField("verbose field2", default=False)
     field3 = models.CharField("verbose field3", max_length=10)
     field4 = models.CommaSeparatedIntegerField("verbose field4", max_length=99)
     field5 = models.DateField("verbose field5")
@@ -83,7 +83,7 @@ class VerboseNameField(models.Model):
     field9 = models.FileField("verbose field9", upload_to="unused")
     field10 = models.FilePathField("verbose field10")
     field11 = models.FloatField("verbose field11")
-    # Don't want to depend on PIL in this test
+    # Don't want to depend on Pillow/PIL in this test
     #field_image = models.ImageField("verbose field")
     field12 = models.IntegerField("verbose field12")
     field13 = models.IPAddressField("verbose field13")
@@ -102,6 +102,10 @@ class VerboseNameField(models.Model):
 class DecimalLessThanOne(models.Model):
     d = models.DecimalField(max_digits=3, decimal_places=3)
 
+class DataModel(models.Model):
+    short_data = models.BinaryField(max_length=10, default=b'\x08')
+    data = models.BinaryField()
+
 ###############################################################################
 # FileField
 
@@ -111,7 +115,7 @@ class Document(models.Model):
 ###############################################################################
 # ImageField
 
-# If PIL available, do these tests.
+# If Pillow/PIL available, do these tests.
 if Image:
     class TestImageFieldFile(ImageFieldFile):
         """
