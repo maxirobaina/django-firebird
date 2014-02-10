@@ -15,6 +15,7 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         35: 'DateTimeField',
         37: 'CharField',
         40: 'TextField',
+        260: 'BinaryField',
         261: 'TextField',
         # A NUMERIC/DECIMAL data type is stored as a SMALLINT, INTEGER or BIGINT
         # in Firebird, thus the value of RDB$FIELD_TYPE is reported. So we need
@@ -48,6 +49,8 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
               , case
                   when (f.rdb$field_type in (7,8,16)) and (f.rdb$field_sub_type > 0) then
                     160 + f.rdb$field_sub_type
+                  when (f.rdb$field_type = 261) then
+                    260 + f.rdb$field_sub_type
                   else
                     f.rdb$field_type end
               , f.rdb$field_length
