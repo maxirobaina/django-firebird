@@ -28,8 +28,11 @@ Instalation
 
 **From repository**
 
-    sudo git clone git://github.com/maxirobaina/django-firebird.git 
-    python setup.py install
+    git clone git://github.com/maxirobaina/django-firebird.git
+    
+    cd django-firebird
+    
+    sudo python setup.py install
 
 **Manual Instalation**
 
@@ -55,7 +58,7 @@ Modify your setting.py ::
     DATABASES = {
         'default': {
             'ENGINE' : 'firebird',
-            'NAME' : '/var/lib/firebird/2.5/data/rdbgraph.fdb', # Path to database or db alias
+            'NAME' : '/var/lib/firebird/2.5/data/django_firebird.fdb', # Path to database or db alias
             'USER' : 'SYSDBA',           # Your db user
             'PASSWORD' : '*****',    # db user password
             'HOST' : '127.0.0.1',        # Your host machine
@@ -84,6 +87,7 @@ Why the change from kinterbasdb to fdb?
 If you want to know more about the differences between *fdb* and *kinterbasdb* you can look at:
 
 http://thread.gmane.org/gmane.comp.db.firebird.python/185/focus=187
+
 http://pythonhosted.org//fdb/differences-from-kdb.html
 
 If you still use *kinterbasdb*, the original google code repository has an updated django-firebird 1.4 version.
