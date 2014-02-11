@@ -10,7 +10,7 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         12: 'DateField',
         13: 'TimeField',
         14: 'CharField',
-        16: 'IntegerField',
+        16: 'BigIntegerField',
         27: 'FloatField',
         35: 'DateTimeField',
         37: 'CharField',
