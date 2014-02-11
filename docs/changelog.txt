@@ -1,10 +1,20 @@
 Changelog
 =========
 
-v1.6 alpha (In Development)
----------------------
+v1.6.1 Release Candidate 1
+--------------------------
++ Fixed missing SQLDateTimeCompiler. #19
++ Fixed BigIntegerField is not supported in introspection. #18
++ Fixed BinaryField is not supported in introspection. #17
++ Fixed missing method name. #11 
++ Fixed setup.py due to README extension change. #12
 
-- Support for Django v1.6.
+
+v1.6.0 alpha
+------------
++ Support for Django v1.6.
++ Support for previous django versions has been removed
++ Update README, change extension to .rst for better PyPI support
 
 
 v1.5.1
@@ -13,8 +23,8 @@ v1.5.1
 + Fixes for Python 3 support
 
 
-v1.5 
-----
+v1.5.0 
+------
 + Moved repository from google http://code.google.com/p/django-firebird/
 + Initial version with replacement of kinterbasdb by fdb
 + Added custom tests
