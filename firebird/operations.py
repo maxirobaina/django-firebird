@@ -71,7 +71,17 @@ class DatabaseOperations(BaseDatabaseOperations):
         """
         Implements the date interval functionality for expressions
         """
-        raise NotImplementedError()    
+        sign = 1 if connector == '+' else -1
+        if timedelta.days:
+            unit = 'day'
+            value = timedelta.days
+        elif timedelta.seconds:
+            unit = 'second'
+            value = ((timedelta.days * 86400) + timedelta.seconds)
+        elif timedelta.microseconds:
+            unit = 'millisecond'
+            value = timedelta.microseconds
+        return 'DATEADD(%s %s TO %s)' % (value * sign, unit, sql)
 
     def date_trunc_sql(self, lookup_type, field_name):
         if lookup_type == 'year':

@@ -1,9 +1,13 @@
 #-*- utf-8 -*-
 
+from datetime import datetime, timedelta
+
 from django.test import TestCase
 from django.db import connection
+from django.db.models import F
 
-from .models import BigS
+from .models import BigS, FieldsTest
+
 
 class FirebirdTest(TestCase):
     def setUp(self):
@@ -81,3 +85,15 @@ class SlugFieldTests(TestCase):
         bs = BigS.objects.create(s = 'slug'*50)
         bs = BigS.objects.get(pk=bs.pk)
         self.assertEqual(bs.s, 'slug'*50)
+
+
+class DateFieldTests(TestCase):
+    def tests_date_interval(self):
+        obj = FieldsTest()
+        obj.pub_date = datetime.now()
+        obj.mod_date = obj.pub_date + timedelta(days=3)
+        obj.save()
+
+        objs = FieldsTest.objects.filter(mod_date__gte=F('pub_date') + timedelta(days=3)).all()
+        self.assertEqual(len(objs), 1)
+

@@ -4,7 +4,9 @@ from django.db import models
 
 
 class FieldsTest(models.Model):
-    date_field = models.DateTimeField()
+    pub_date = models.DateTimeField()
+    mod_date = models.DateTimeField()
+
 
 class BigS(models.Model):
     s = models.SlugField(max_length=255)
