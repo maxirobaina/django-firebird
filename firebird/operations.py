@@ -66,6 +66,12 @@ class DatabaseOperations(BaseDatabaseOperations):
         if lookup_type == 'week_day':
             return "EXTRACT(WEEKDAY FROM %s) + 1" % field_name
         return "EXTRACT(%s FROM %s)" % (lookup_type.upper(), field_name)
+        
+    def date_interval_sql(self, sql, connector, timedelta):
+        """
+        Implements the date interval functionality for expressions
+        """
+        raise NotImplementedError()    
 
     def date_trunc_sql(self, lookup_type, field_name):
         if lookup_type == 'year':
@@ -75,6 +81,45 @@ class DatabaseOperations(BaseDatabaseOperations):
         elif lookup_type == 'day':
             sql = "EXTRACT(year FROM %s)||'-'||EXTRACT(month FROM %s)||'-'||EXTRACT(day FROM %s)||' 00:00:00'" % (field_name, field_name, field_name)
         return "CAST(%s AS TIMESTAMP)" % sql
+        
+    def datetime_extract_sql(self, lookup_type, field_name, tzname):
+        """
+        Given a lookup_type of 'year', 'month', 'day', 'hour', 'minute' or
+        'second', returns the SQL that extracts a value from the given
+        datetime field field_name, and a tuple of parameters.
+        """
+        if lookup_type == 'week_day':
+            sql = "EXTRACT(WEEKDAY FROM %s) + 1" % field_name
+        else:
+            sql = "EXTRACT(%s FROM %s)" % (lookup_type.upper(), field_name)
+        return sql, []
+
+    def datetime_trunc_sql(self, lookup_type, field_name, tzname):
+        """
+        Given a lookup_type of 'year', 'month', 'day', 'hour', 'minute' or
+        'second', returns the SQL that truncates the given datetime field
+        field_name to a datetime object with only the given specificity, and
+        a tuple of parameters.
+        """
+        year = "EXTRACT(year FROM %s)" % field_name
+        month = "EXTRACT(month FROM %s)" % field_name
+        day = "EXTRACT(day FROM %s)" % field_name
+        hh = "EXTRACT(hour FROM %s)" % field_name
+        mm = "EXTRACT(minute FROM %s)" % field_name
+        ss = "EXTRACT(second FROM %s)" % field_name
+        if lookup_type == 'year':
+            sql = "%s||'-01-01 00:00:00'" % year
+        elif lookup_type == 'month':
+            sql = "%s||'-'||%s||'-01 00:00:00'" % (year, month)
+        elif lookup_type == 'day':
+            sql = "%s||'-'||%s||'-'||%s||' 00:00:00'" % (year, month, day)
+        elif lookup_type == 'hour':
+            sql = "%s||'-'||%s||'-'||%s||' '||%s||':00:00'" % (year, month, day, hh)
+        elif lookup_type == 'minute':
+            sql = "%s||'-'||%s||'-'||%s||' '||%s||':'||%s||':00'" % (year, month, day, hh, mm)
+        elif lookup_type == 'second':
+            sql = "%s||'-'||%s||'-'||%s||' '||%s||':'||%s||':'||%s" % (year, month, day, hh, mm, ss)
+        return "CAST(%s AS TIMESTAMP)" % sql, []
 
     def lookup_cast(self, lookup_type):
         if lookup_type in ('iexact', 'icontains', 'istartswith', 'iendswith'):
