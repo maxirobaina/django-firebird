@@ -1,8 +1,10 @@
 Changelog
 =========
 
-v1.6.1 Release Candidate 1
+v1.6.0 Release Candidate 1
 --------------------------
++ Fixed missing date_interval_sql implementation. #21
++ Fixed datetime_trunc_sql NotImplementedError. #20
 + Fixed missing SQLDateTimeCompiler. #19
 + Fixed BigIntegerField is not supported in introspection. #18
 + Fixed BinaryField is not supported in introspection. #17
