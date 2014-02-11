@@ -16,7 +16,7 @@ fbd is the official stable python-firebird driver, also it has support for pytho
 Requirements
 ------------
   * Python 2.6+ 
-  * Django 1.5+
+  * Django 1.6+
   * fdb (http://pypi.python.org/pypi/fdb/)
 
 Instalation
