@@ -2,6 +2,12 @@
 django-firebird
 ===============
 
+.. image:: https://pypip.in/v/django-firebird/badge.png
+        :target: https://pypi.python.org/pypi/django-firebird
+
+.. image:: https://pypip.in/d/django-firebird/badge.png
+        :target: https://pypi.python.org/pypi/django-firebird
+
 
 Firebird SQL backend for django
 -------------------------------
