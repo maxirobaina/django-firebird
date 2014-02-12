@@ -63,6 +63,22 @@ class DatabaseOperations(BaseDatabaseOperations):
         if isinstance(aggregate_func, Avg):
             aggregate_func.sql_template = '%(function)s(CAST(%(field)s as double precision))'
 
+    def date_interval_sql(self, sql, connector, timedelta):
+        """
+        Implements the date interval functionality for expressions
+        """
+        sign = 1 if connector == '+' else -1
+        if timedelta.days:
+            unit = 'day'
+            value = timedelta.days
+        elif timedelta.seconds:
+            unit = 'second'
+            value = ((timedelta.days * 86400) + timedelta.seconds)
+        elif timedelta.microseconds:
+            unit = 'millisecond'
+            value = timedelta.microseconds
+        return 'DATEADD(%s %s TO %s)' % (value * sign, unit, sql)
+
     def date_extract_sql(self, lookup_type, field_name):
         # Firebird uses WEEKDAY keyword.
         if lookup_type == 'week_day':
