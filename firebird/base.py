@@ -30,7 +30,7 @@ OperationalError = Database.OperationalError
 
 
 class DatabaseFeatures(BaseDatabaseFeatures):
-    allows_group_by_pk = True
+    allows_group_by_pk = False #if the backend can group by just by PK
     supports_forward_references = False
     has_bulk_insert = False
     can_return_id_from_insert = True
