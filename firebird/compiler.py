@@ -18,7 +18,7 @@ class SQLCompiler(compiler.SQLCompiler):
         for value, field in zip_longest(row[index_start:], fields):
             v = self.query.convert_values(value, field, connection=self.connection)
             values.append(v)
-        return row[:index_start] + tuple(values)
+        return tuple(row[:index_start]) + tuple(values)
 
     def as_sql(self, with_limits=True, with_col_aliases=False):
         sql, params = super(SQLCompiler, self).as_sql(with_limits=False, with_col_aliases=with_col_aliases)

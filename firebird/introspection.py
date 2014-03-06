@@ -35,7 +35,8 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
     def get_table_list(self, cursor):
         "Returns a list of table names in the current database."
         cursor.execute("""
-            select rdb$relation_name from rdb$relations
+            select CAST(rdb$relation_name AS VARCHAR(30))
+                from rdb$relations
             where rdb$system_flag = 0 and rdb$view_source is null
             order by rdb$relation_name""")
         return [r[0].strip().lower() for r in cursor.fetchall()]
@@ -64,7 +65,7 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
             order by
               rf.rdb$field_position
             """ % (tbl_name,))
-        return [(r[0].strip(), r[1], r[2], r[2] or 0, r[3], r[4], not (r[5] == 1)) for r in cursor.fetchall()]
+        return [(r[0].strip().lower(), r[1], r[2], r[2] or 0, r[3], r[4], not (r[5] == 1)) for r in cursor.fetchall()]
 
     def _name_to_index(self, cursor, table_name):
         """Return a dictionary of {field_name: field_index} for the given table.
@@ -81,9 +82,9 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         key_columns = []
         cursor.execute("""
             select
-                s.rdb$field_name as column_name,
-                i2.rdb$relation_name as referenced_table_name,
-                s2.rdb$field_name as referenced_column_name
+                CAST(s.rdb$field_name AS VARCHAR(30)) as column_name,
+                CAST(i2.rdb$relation_name AS VARCHAR(30)) as referenced_table_name,
+                CAST(s2.rdb$field_name AS VARCHAR(30)) as referenced_column_name
             from rdb$index_segments s
             left join rdb$indices i on i.rdb$index_name = s.rdb$index_name
             left join rdb$relation_constraints rc on rc.rdb$index_name = s.rdb$index_name
@@ -95,7 +96,7 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
             and upper(i.rdb$relation_name) = %s """ % (tbl_name,))
 
         for r in cursor.fetchall():
-            key_columns.append((r[0].strip(), r[1].strip(), r[2].strip()))
+            key_columns.append((r[0].strip().lower(), r[1].strip().lower(), r[2].strip().lower()))
         return key_columns
 
     def get_relations(self, cursor, table_name):
@@ -124,7 +125,7 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         tbl_name = "'%s'" % table_name.upper()
         cursor.execute("""
             SELECT
-              seg2.rdb$field_name
+              CAST(seg2.rdb$field_name AS VARCHAR(30))
               , case
                   when exists (
                     select
@@ -147,7 +148,7 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
               and i.rdb$unique_flag = 1""" % (tbl_name,))
         indexes = {}
         for r in cursor.fetchall():
-            indexes[r[0].strip()] = {
+            indexes[r[0].strip().lower()] = {
                 'primary_key': (r[1].strip() == 'PRIMARY KEY'),
                 'unique': (r[1].strip() == 'UNIQUE')
             }

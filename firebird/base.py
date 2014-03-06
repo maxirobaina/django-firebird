@@ -5,12 +5,19 @@ Firebird database backend for Django.
 import sys
 
 try:
-    import fdb as Database
+    try:
+        import fdb as Database
+    except ImportError:
+        import firebirdsql as Database
 except ImportError as e:
     from django.core.exceptions import ImproperlyConfigured
     raise ImproperlyConfigured("Error loading fdb module: %s" % e)
 
-from fdb.ibase import charset_map
+try:
+    from fdb.ibase import charset_map
+except ImportError:
+    from firebirdsql.consts import charset_map
+
 
 from django.db import utils
 from django.db.backends import *
@@ -118,6 +125,8 @@ class DatabaseWrapper(BaseDatabaseWrapper):
 
         self._db_charset = conn_params.get('charset')
         self.encoding = charset_map.get(self._db_charset, 'utf_8')
+        if Database.__name__ == 'firebirdsql':
+            conn_params['use_unicode'] = True
 
         return conn_params
 
@@ -147,7 +156,8 @@ class DatabaseWrapper(BaseDatabaseWrapper):
 
         Pay attention at _close() method below
         """
-        pass
+        if Database.__name__ == 'firebirdsql':
+            self.connection.set_autocommit(autocommit)
 
     ##### Backend-specific wrappers for PEP-249 connection methods #####
 
@@ -202,6 +212,11 @@ class FirebirdCursorWrapper(object):
     def execute(self, query, params=None):
         if params is None:
             params = []
+        if isinstance(params, tuple):
+            params = list(params)
+        for i in range(len(params)):    # convert bool to 0/1
+            if isinstance(params[i], bool) and params[i] is not None:
+                params[i] = 1 if params[i] else 0
         try:
             q = self.convert_query(query, len(params))
             return self.cursor.execute(q, params)
@@ -217,7 +232,8 @@ class FirebirdCursorWrapper(object):
 
     def executemany(self, query, param_list):
         try:
-            q = self.convert_query(query, len(param_list[0]))
+            num_param = len(param_list[0]) if len(param_list) else 0
+            q = self.convert_query(query, num_param)
             return self.cursor.executemany(q, param_list)
         except Database.IntegrityError as e:
             six.reraise(utils.IntegrityError, utils.IntegrityError(*self.error_info(e, query, param_list[0])), sys.exc_info()[2])

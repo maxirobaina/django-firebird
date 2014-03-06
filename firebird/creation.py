@@ -1,5 +1,9 @@
 import sys
-import fdb as Database
+try:
+    import fdb as Database
+except ImportError:
+    import firebirdsql as Database
+
 
 from django.db.backends.creation import BaseDatabaseCreation
 from django.utils.six.moves import input
@@ -68,6 +72,8 @@ class DatabaseCreation(BaseDatabaseCreation):
             conn_params['user'] = settings_dict['USER']
         if settings_dict['PASSWORD']:
             conn_params['password'] = settings_dict['PASSWORD']
+        if Database.__name__ == 'firebirdsql':
+            conn_params['use_unicode'] = True
         conn_params.update(settings_dict['OPTIONS'])
         conn_params.update(overrides)
         return conn_params
@@ -81,12 +87,16 @@ class DatabaseCreation(BaseDatabaseCreation):
     def _create_database(self, test_database_name, verbosity):
         self._check_active_connection(verbosity)
         params = self._get_connection_params(database=test_database_name)
-        connection = Database.create_database("""
+        if Database.__name__ == 'fdb':
+            connection = Database.create_database("""
                         CREATE DATABASE '%(database)s'
                         USER '%(user)s'
                         PASSWORD '%(password)s'
                         DEFAULT CHARACTER SET %(charset)s;""" % params
-        )
+            )
+        else:   # firebirdsql
+            params['page_size'] = 16384
+            connection = Database.create_database(**params)
         connection.execute_immediate("CREATE EXCEPTION teste '';")
         connection.commit()
         connection.close()
@@ -130,3 +140,5 @@ class DatabaseCreation(BaseDatabaseCreation):
         connection.drop_database()
         connection.close()
 
+    def _get_test_db_name(self):
+        return self.connection.settings_dict['NAME']
