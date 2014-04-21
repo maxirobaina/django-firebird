@@ -41,7 +41,7 @@ class DatabaseCreation(BaseDatabaseCreation):
         'TimeField':         'time',
     }
 
-    def sql_for_inline_foreign_key_references(self, model, field, known_models, style):
+    def sql_for_inline_foreign_key_references(self,*args):
         # Always pending
         return [], TEST_MODE < 2
 
