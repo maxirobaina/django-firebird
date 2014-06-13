@@ -13,7 +13,11 @@ except ImportError as e:
 from fdb.ibase import charset_map
 
 from django.db import utils
-from django.db.backends import *
+from django.db.backends import (
+    BaseDatabaseFeatures, 
+    BaseDatabaseWrapper,
+    BaseDatabaseValidation,
+)
 from django.db.backends.signals import connection_created
 from django.utils.encoding import smart_str
 from django.utils.functional import cached_property
@@ -23,6 +27,7 @@ from .operations import DatabaseOperations
 from .client import DatabaseClient
 from .creation import DatabaseCreation
 from .introspection import DatabaseIntrospection
+from .schema import DatabaseSchemaEditor
 
 DatabaseError = Database.DatabaseError
 IntegrityError = Database.IntegrityError
@@ -30,7 +35,7 @@ OperationalError = Database.OperationalError
 
 
 class DatabaseFeatures(BaseDatabaseFeatures):
-    allows_group_by_pk = False #if the backend can group by just by PK
+    allows_group_by_pk = False  # if the backend can group by just by PK
     supports_forward_references = False
     has_bulk_insert = False
     can_return_id_from_insert = True
@@ -43,6 +48,14 @@ class DatabaseFeatures(BaseDatabaseFeatures):
     has_zoneinfo_database = False
     uses_savepoints = True
     supports_paramstyle_pyformat = False
+    #connection_persists_old_columns = True
+    #can_rollback_ddl = True
+    requires_literal_defaults = True
+    has_case_insensitive_like = False    
+    supports_check_constraints = False  # In firebird, check constraint are a table based, no column based
+    
+    can_introspect_boolean_field = False
+    can_introspect_small_integer_field = True
 
     @cached_property
     def supports_transactions(self):
@@ -59,17 +72,17 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         'exact': '= %s',
         'iexact': '= UPPER(%s)',
         'contains': "LIKE %s ESCAPE'\\'",
-        'icontains': "LIKE UPPER(%s) ESCAPE'\\'", #'CONTAINING %s', #case is ignored
+        'icontains': "LIKE UPPER(%s) ESCAPE'\\'",  #'CONTAINING %s', #case is ignored
         'gt': '> %s',
         'gte': '>= %s',
         'lt': '< %s',
         'lte': '<= %s',
-        'startswith': "LIKE %s ESCAPE'\\'", #'STARTING WITH %s', #looks to be faster than LIKE
+        'startswith': "LIKE %s ESCAPE'\\'",  #'STARTING WITH %s', #looks to be faster than LIKE
         'endswith': "LIKE %s ESCAPE'\\'",
-        'istartswith': "LIKE UPPER(%s) ESCAPE'\\'", #'STARTING WITH UPPER(%s)',
+        'istartswith': "LIKE UPPER(%s) ESCAPE'\\'",  #'STARTING WITH UPPER(%s)',
         'iendswith': "LIKE UPPER(%s) ESCAPE'\\'",
         'regex': "SIMILAR TO %s",
-        'iregex': "SIMILAR TO %s", # Case Sensitive depends on collation
+        'iregex': "SIMILAR TO %s",  # Case Sensitive depends on collation
     }
 
     Database = Database
@@ -131,7 +144,8 @@ class DatabaseWrapper(BaseDatabaseWrapper):
 
     def create_cursor(self):
         """Creates a cursor. Assumes that a connection is established."""
-        return FirebirdCursorWrapper(self.connection.cursor(), self.encoding)
+        cursor = self.connection.cursor()
+        return FirebirdCursorWrapper(cursor, self.encoding)
 
     ##### Backend-specific transaction management methods #####
 
@@ -154,7 +168,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
     def _close(self):
         if self.connection is not None:
             with self.wrap_database_errors:
-                if self.autocommit == True:
+                if self.autocommit is True:
                     self.connection.commit()
                 return self.connection.close()
 
@@ -186,6 +200,10 @@ class DatabaseWrapper(BaseDatabaseWrapper):
             self._server_version = self.connection.db_info(Database.isc_info_firebird_version)
         return self._server_version
 
+    def schema_editor(self, *args, **kwargs):
+        "Returns a new instance of this backend's SchemaEditor"
+        return DatabaseSchemaEditor(self, *args, **kwargs)
+
 
 class FirebirdCursorWrapper(object):
     """
@@ -193,7 +211,7 @@ class FirebirdCursorWrapper(object):
     This fixes it -- but note that if you want to use a literal "%s" in a query,
     you'll need to use "%%s".
     """
-    codes_for_integrityerror = (-803, -625)
+    codes_for_integrityerror = (-803, -625, -530)
 
     def __init__(self, cursor, encoding):
         self.cursor = cursor
@@ -204,6 +222,7 @@ class FirebirdCursorWrapper(object):
             params = []
         try:
             q = self.convert_query(query, len(params))
+            #print(q, params)
             return self.cursor.execute(q, params)
         except Database.IntegrityError as e:
             six.reraise(utils.IntegrityError, utils.IntegrityError(*self.error_info(e, query, params)), sys.exc_info()[2])
@@ -213,7 +232,8 @@ class FirebirdCursorWrapper(object):
             # fdb: raise exception as tuple with (error_msg, sqlcode, error_code)
             if e.args[1] in self.codes_for_integrityerror:
                 six.reraise(utils.IntegrityError, utils.IntegrityError(*self.error_info(e, query, params)), sys.exc_info()[2])
-            six.reraise(utils.DatabaseError, utils.DatabaseError(*self.error_info(e, query, params)), sys.exc_info()[2])
+            #six.reraise(utils.DatabaseError, utils.DatabaseError(*self.error_info(e, query, params)), sys.exc_info()[2])
+            raise
 
     def executemany(self, query, param_list):
         try:
@@ -227,7 +247,8 @@ class FirebirdCursorWrapper(object):
             # fdb: raise exception as tuple with (error_msg, sqlcode, error_code)
             if e.args[1] in self.codes_for_integrityerror:
                 six.reraise(utils.IntegrityError, utils.IntegrityError(*self.error_info(e, query, param_list[0])), sys.exc_info()[2])
-            six.reraise(utils.DatabaseError, utils.DatabaseError(*self.error_info(e, query, param_list[0])), sys.exc_info()[2])
+            #six.reraise(utils.DatabaseError, utils.DatabaseError(*self.error_info(e, query, param_list[0])), sys.exc_info()[2])
+            raise
 
     def convert_query(self, query, num_params):
         # kinterbasdb tries to convert the passed SQL to string.

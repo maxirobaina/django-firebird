@@ -21,8 +21,8 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         # in Firebird, thus the value of RDB$FIELD_TYPE is reported. So we need
         # two additional helper data types for that to distinguish between real
         # Integer data types and NUMERIC/DECIMAL
-        161: 'DecimalField', # NUMERIC => RDB$FIELD_SUB_TYPE = 1
-        162: 'DecimalField', # DECIMAL => RDB$FIELD_SUB_TYPE = 2
+        161: 'DecimalField',  # NUMERIC => RDB$FIELD_SUB_TYPE = 1
+        162: 'DecimalField',  # DECIMAL => RDB$FIELD_SUB_TYPE = 2
         # Also, the scale value of a NUMERIC/DECIMAL fields is stored as negative
         # number in the Firebird system tables, thus we have to multiply with -1.
         # The SELECT statement in the function get_table_description takes care
@@ -64,7 +64,7 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
             order by
               rf.rdb$field_position
             """ % (tbl_name,))
-        return [(r[0].strip(), r[1], r[2], r[2] or 0, r[3], r[4], not (r[5] == 1)) for r in cursor.fetchall()]
+        return [(r[0].strip().lower(), r[1], r[2], r[2] or 0, r[3], r[4], not (r[5] == 1)) for r in cursor.fetchall()]
 
     def _name_to_index(self, cursor, table_name):
         """Return a dictionary of {field_name: field_index} for the given table.
@@ -123,33 +123,113 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         # This query retrieves each field name and index type on the given table.
         tbl_name = "'%s'" % table_name.upper()
         cursor.execute("""
-            SELECT
-              seg2.rdb$field_name
-              , case
-                  when exists (
-                    select
-                      1
-                    from
-                      rdb$relation_constraints con
-                    where
-                      con.rdb$constraint_type = 'PRIMARY KEY'
-                      and con.rdb$index_name = i.rdb$index_name
-                  ) then
-                    'PRIMARY KEY'
-                  else
-                    'UNIQUE'
-              end
-            FROM
-              rdb$indices i
-              JOIN rdb$index_segments seg2 on seg2.rdb$index_name = i.rdb$index_name
-            WHERE
-              upper(i.rdb$relation_name) = %s
-              and i.rdb$unique_flag = 1""" % (tbl_name,))
+        SELECT
+          LOWER(s.RDB$FIELD_NAME) AS field_name,
+
+          LOWER(case
+            when rc.RDB$CONSTRAINT_TYPE is not null then rc.RDB$CONSTRAINT_TYPE
+            else 'INDEX'
+          end) AS constraint_type
+
+        FROM RDB$INDEX_SEGMENTS s
+        LEFT JOIN RDB$INDICES i ON i.RDB$INDEX_NAME = s.RDB$INDEX_NAME
+        LEFT JOIN RDB$RELATION_CONSTRAINTS rc ON rc.RDB$INDEX_NAME = s.RDB$INDEX_NAME
+        WHERE i.RDB$RELATION_NAME = %s
+        ORDER BY s.RDB$FIELD_POSITION
+        """ % (tbl_name,))
         indexes = {}
-        for r in cursor.fetchall():
-            indexes[r[0].strip()] = {
-                'primary_key': (r[1].strip() == 'PRIMARY KEY'),
-                'unique': (r[1].strip() == 'UNIQUE')
-            }
+        for fn, ct in cursor.fetchall():
+            field_name = fn.strip()
+            constraint_type = ct.strip()
+            if field_name not in indexes:
+                indexes[field_name] = {'primary_key': False, 'unique': False}
+            # It's possible to have the unique and PK constraints in separate indexes.
+            if constraint_type == 'primary key':
+                indexes[field_name]['primary_key'] = True
+            if constraint_type == 'unique':
+                indexes[field_name]['unique'] = True
         return indexes
+
+    def get_constraints(self, cursor, table_name):
+        """
+        Retrieves any constraints or keys (unique, pk, fk, check, index)
+        across one or more columns.
+
+        Returns a dict mapping constraint names to their attributes,
+        where attributes is a dict with keys:
+         * columns: List of columns this covers
+         * primary_key: True if primary key, False otherwise
+         * unique: True if this is a unique constraint, False otherwise
+         * foreign_key: (table, column) of target, or None
+         * check: True if check constraint, False otherwise
+         * index: True if index, False otherwise.
+
+        Some backends may return special constraint names that don't exist
+        if they don't name constraints of a certain type (e.g. SQLite)
+        """
+        tbl_name = "'%s'" % table_name.upper()
+        constraints = {}
+
+        cursor.execute("""
+        SELECT
+          case
+            when rc.RDB$CONSTRAINT_NAME is not null then rc.RDB$CONSTRAINT_NAME
+            else i.RDB$INDEX_NAME
+          end as constraint_name,
+
+          case
+            when rc.RDB$CONSTRAINT_TYPE is not null then rc.RDB$CONSTRAINT_TYPE
+            else 'INDEX'
+          end AS constraint_type,
+
+          s.RDB$FIELD_NAME AS field_name,
+          i2.RDB$RELATION_NAME AS references_table,
+          s2.RDB$FIELD_NAME AS references_field,
+          i.RDB$UNIQUE_FLAG
+        FROM RDB$INDEX_SEGMENTS s
+        LEFT JOIN RDB$INDICES i ON i.RDB$INDEX_NAME = s.RDB$INDEX_NAME
+        LEFT JOIN RDB$RELATION_CONSTRAINTS rc ON rc.RDB$INDEX_NAME = s.RDB$INDEX_NAME
+        LEFT JOIN RDB$REF_CONSTRAINTS refc ON rc.RDB$CONSTRAINT_NAME = refc.RDB$CONSTRAINT_NAME
+        LEFT JOIN RDB$RELATION_CONSTRAINTS rc2 ON rc2.RDB$CONSTRAINT_NAME = refc.RDB$CONST_NAME_UQ
+        LEFT JOIN RDB$INDICES i2 ON i2.RDB$INDEX_NAME = rc2.RDB$INDEX_NAME
+        LEFT JOIN RDB$INDEX_SEGMENTS s2 ON i2.RDB$INDEX_NAME = s2.RDB$INDEX_NAME
+        WHERE i.RDB$RELATION_NAME = %s
+        ORDER BY s.RDB$FIELD_POSITION
+        """ % (tbl_name,))
+        for constraint_name, constraint_type, column, other_table, other_column, unique in cursor.fetchall():
+            primary_key = False
+            foreign_key = None
+            check = False
+            index = False
+            constraint = constraint_name.strip()
+            constraint_type = constraint_type.strip()
+            column = column.strip().lower()
+            if other_table:
+                other_table = other_table.strip().lower()
+            if other_column:
+                other_column = other_column.strip().lower()
+
+            if constraint_type == 'PRIMARY KEY':
+                primary_key = True
+            elif constraint_type == 'UNIQUE':
+                unique = True
+            elif constraint_type == 'FOREIGN KEY':
+                foreign_key = (other_table, other_column,)
+                index = True
+            elif constraint_type == 'INDEX':
+                index = True
+
+            if constraint not in constraints:
+                constraints[constraint] = {
+                    "columns": [],
+                    "primary_key": primary_key,
+                    "unique": unique,
+                    "foreign_key": foreign_key,
+                    "check": check,
+                    "index": index,
+                }
+            # Record the details
+            constraints[constraint]['columns'].append(column)
+
+        return constraints
 
