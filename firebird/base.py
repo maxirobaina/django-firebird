@@ -52,10 +52,11 @@ class DatabaseFeatures(BaseDatabaseFeatures):
     #can_rollback_ddl = True
     requires_literal_defaults = True
     has_case_insensitive_like = False    
-    supports_check_constraints = False  # In firebird, check constraint are a table based, no column based
+    supports_check_constraints = False  # In firebird, check constraint are table based, no column based
     
     can_introspect_boolean_field = False
     can_introspect_small_integer_field = True
+    uppercases_column_names = True
 
     @cached_property
     def supports_transactions(self):
@@ -222,7 +223,6 @@ class FirebirdCursorWrapper(object):
             params = []
         try:
             q = self.convert_query(query, len(params))
-            #print(q, params)
             return self.cursor.execute(q, params)
         except Database.IntegrityError as e:
             six.reraise(utils.IntegrityError, utils.IntegrityError(*self.error_info(e, query, params)), sys.exc_info()[2])
