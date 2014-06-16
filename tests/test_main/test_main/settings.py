@@ -131,6 +131,7 @@ INSTALLED_APPS = (
     'model_fields',
     'transactions',
     'schema',
+    'introspection',
 )
 
 # A sample logging configuration. The only tangible logging

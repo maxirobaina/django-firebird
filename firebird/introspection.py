@@ -81,9 +81,9 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         key_columns = []
         cursor.execute("""
             select
-                s.rdb$field_name as column_name,
-                i2.rdb$relation_name as referenced_table_name,
-                s2.rdb$field_name as referenced_column_name
+                lower(s.rdb$field_name) as column_name,
+                lower(i2.rdb$relation_name) as referenced_table_name,
+                lower(s2.rdb$field_name) as referenced_column_name
             from rdb$index_segments s
             left join rdb$indices i on i.rdb$index_name = s.rdb$index_name
             left join rdb$relation_constraints rc on rc.rdb$index_name = s.rdb$index_name
@@ -135,6 +135,7 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         LEFT JOIN RDB$INDICES i ON i.RDB$INDEX_NAME = s.RDB$INDEX_NAME
         LEFT JOIN RDB$RELATION_CONSTRAINTS rc ON rc.RDB$INDEX_NAME = s.RDB$INDEX_NAME
         WHERE i.RDB$RELATION_NAME = %s
+        AND i.RDB$SEGMENT_COUNT = 1
         ORDER BY s.RDB$FIELD_POSITION
         """ % (tbl_name,))
         indexes = {}
