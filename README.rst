@@ -30,7 +30,7 @@ Instalation
 
 **Using pip** 
   
-    pip install django-fiebird
+    pip install django-firebird
 
 **From repository**
 
