@@ -14,7 +14,7 @@ from fdb.ibase import charset_map
 
 from django.db import utils
 from django.db.backends import (
-    BaseDatabaseFeatures, 
+    BaseDatabaseFeatures,
     BaseDatabaseWrapper,
     BaseDatabaseValidation,
 )
@@ -49,13 +49,19 @@ class DatabaseFeatures(BaseDatabaseFeatures):
     uses_savepoints = True
     supports_paramstyle_pyformat = False
     #connection_persists_old_columns = True
-    #can_rollback_ddl = True
+    can_rollback_ddl = True
     requires_literal_defaults = True
-    has_case_insensitive_like = False    
-    supports_check_constraints = False  # In firebird, check constraint are table based, no column based
-    
+    has_case_insensitive_like = False
+
+    # In firebird, check constraint are table based, no column based
+    supports_column_check_constraints = False
+
     can_introspect_boolean_field = False
     can_introspect_small_integer_field = True
+
+    # If NULL is implied on columns without needing to be explicitly specified
+    implied_column_null = True
+
     uppercases_column_names = True
 
     @cached_property
@@ -73,14 +79,14 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         'exact': '= %s',
         'iexact': '= UPPER(%s)',
         'contains': "LIKE %s ESCAPE'\\'",
-        'icontains': "LIKE UPPER(%s) ESCAPE'\\'",  #'CONTAINING %s', #case is ignored
+        'icontains': "LIKE UPPER(%s) ESCAPE'\\'",  # 'CONTAINING %s', #case is ignored
         'gt': '> %s',
         'gte': '>= %s',
         'lt': '< %s',
         'lte': '<= %s',
-        'startswith': "LIKE %s ESCAPE'\\'",  #'STARTING WITH %s', #looks to be faster than LIKE
+        'startswith': "LIKE %s ESCAPE'\\'",  # 'STARTING WITH %s', #looks to be faster than LIKE
         'endswith': "LIKE %s ESCAPE'\\'",
-        'istartswith': "LIKE UPPER(%s) ESCAPE'\\'",  #'STARTING WITH UPPER(%s)',
+        'istartswith': "LIKE UPPER(%s) ESCAPE'\\'",  # 'STARTING WITH UPPER(%s)',
         'iendswith': "LIKE UPPER(%s) ESCAPE'\\'",
         'regex': "SIMILAR TO %s",
         'iregex': "SIMILAR TO %s",  # Case Sensitive depends on collation
