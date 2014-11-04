@@ -6,6 +6,7 @@ from django.utils.six.moves import input
 
 TEST_MODE = 0
 
+
 class DatabaseCreation(BaseDatabaseCreation):
     # This dictionary maps Field objects to their associated Firebird column
     # types, as strings. Column-type strings can contain format strings; they'll
@@ -132,4 +133,3 @@ class DatabaseCreation(BaseDatabaseCreation):
         connection = Database.connect(**self._get_connection_params(database=test_database_name))
         connection.drop_database()
         connection.close()
-
