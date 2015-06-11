@@ -1,6 +1,22 @@
 Changelog
 =========
 
+v1.6.3
+------
++ Support for PEP 440. #41
++ Update documentation
+
+
+v1.6.2
+------
++ Improve customized error info on exception. #40
+
+
+v1.6.1
+------
++ Minor bug fixes and improve documentation
+
+
 v1.6.0 Release Candidate 2
 --------------------------
 + Fixed Error in group by clause: only includes the primary key. #22
@@ -13,7 +29,7 @@ v1.6.0 Release Candidate 1
 + Fixed missing SQLDateTimeCompiler. #19
 + Fixed BigIntegerField is not supported in introspection. #18
 + Fixed BinaryField is not supported in introspection. #17
-+ Fixed missing method name. #11 
++ Fixed missing method name. #11
 + Fixed setup.py due to README extension change. #12
 
 
@@ -30,7 +46,7 @@ v1.5.1
 + Fixes for Python 3 support
 
 
-v1.5.0 
+v1.5.0
 ------
 + Moved repository from google http://code.google.com/p/django-firebird/
 + Initial version with replacement of kinterbasdb by fdb

@@ -2,10 +2,10 @@
 django-firebird
 ===============
 
-.. image:: https://pypip.in/v/django-firebird/badge.png
+.. image:: https://img.shields.io/pypi/v/django-firebird.svg
         :target: https://pypi.python.org/pypi/django-firebird
 
-.. image:: https://pypip.in/d/django-firebird/badge.png
+.. image:: https://img.shields.io/pypi/dm/django-firebird.svg
         :target: https://pypi.python.org/pypi/django-firebird
 
 
@@ -21,29 +21,29 @@ fbd is the official stable python-firebird driver, also it has support for pytho
 
 Requirements
 ------------
-  * Python 2.6+ 
-  * Django 1.6+
+  * Python 2.6+ or Python 3.x
+  * Django 1.6.x
   * fdb (http://pypi.python.org/pypi/fdb/)
 
 Instalation
 -----------
 
-**Using pip** 
-  
+**Using pip**
+
     pip install django-firebird
 
 **From repository**
 
     git clone git://github.com/maxirobaina/django-firebird.git
-    
+
     cd django-firebird
-    
+
     sudo python setup.py install
 
 **Manual Instalation**
 
-Instructions for Ubuntu/Debian 
-I assume you have installed django from source with python setup.py install 
+Instructions for Ubuntu/Debian
+I assume you have installed django from source with python setup.py install
 
 
     cd /usr/local/lib/python2.7/dist-packages
@@ -69,7 +69,7 @@ Modify your setting.py ::
             'PASSWORD' : '*****',    # db user password
             'HOST' : '127.0.0.1',        # Your host machine
             'PORT' : '3050',             # If is empty, use default 3050
-            #'OPTIONS' : {'charset':'ISO8859_1'}  
+            #'OPTIONS' : {'charset':'ISO8859_1'}
         }
     }
 
@@ -84,7 +84,7 @@ Code and issues is in GitHub:
 We also have a mailing list:
 
     http://groups.google.com/group/django-firebird-dev
-    
+
 Legacy driver
 -------------
 
@@ -99,6 +99,3 @@ http://pythonhosted.org//fdb/differences-from-kdb.html
 If you still use *kinterbasdb*, the original google code repository has an updated django-firebird 1.4 version.
 
 http://code.google.com/p/django-firebird/
-
-    
-
