@@ -14,7 +14,6 @@ from fdb.ibase import charset_map
 
 from django.db import utils
 from django.db.backends import *
-from django.db.backends.signals import connection_created
 from django.utils.encoding import smart_str
 from django.utils.functional import cached_property
 from django.utils import six
@@ -30,7 +29,7 @@ OperationalError = Database.OperationalError
 
 
 class DatabaseFeatures(BaseDatabaseFeatures):
-    allows_group_by_pk = False #if the backend can group by just by PK
+    allows_group_by_pk = False  # if the backend can group by just by PK
     supports_forward_references = False
     has_bulk_insert = False
     can_return_id_from_insert = True
@@ -238,7 +237,8 @@ class FirebirdCursorWrapper(object):
         return smart_str(query % tuple("?" * num_params), self.encoding)
 
     def error_info(self, e, q, p):
-        return tuple([e.args[0], '%s -- %s' % (e.args[1], q % tuple(p))])
+        sql_text = q % tuple(p)
+        return tuple([e.args[0], e.args[1], e.args[2], {'sql': sql_text, 'params': p}])
 
     def __getattr__(self, attr):
         if attr in self.__dict__:
