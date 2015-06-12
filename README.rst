@@ -96,6 +96,6 @@ http://thread.gmane.org/gmane.comp.db.firebird.python/185/focus=187
 
 http://pythonhosted.org//fdb/differences-from-kdb.html
 
-If you still use *kinterbasdb*, the original google code repository has an updated django-firebird 1.4 version.
+If you still use *kinterbasdb*, the original google code repository has an updated django-firebird 1.4.x LTS version.
 
-http://code.google.com/p/django-firebird/
+https://github.com/mariuz/django-firebird-1.4
