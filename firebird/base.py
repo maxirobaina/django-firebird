@@ -237,8 +237,28 @@ class FirebirdCursorWrapper(object):
         return smart_str(query % tuple("?" * num_params), self.encoding)
 
     def error_info(self, e, q, p):
-        sql_text = q % tuple(p)
-        return tuple([e.args[0], e.args[1], e.args[2], {'sql': sql_text, 'params': p}])
+        # fdb: raise exception as tuple with (error_msg, sqlcode, error_code)
+        # just when it uses exception_from_status function. Ticket #44.
+        try:
+            error_msg = e.args[0]
+        except IndexError:
+            error_msg = ''
+
+        try:
+            sql_code = e.args[1]
+        except IndexError:
+            sql_code = None
+
+        try:
+            error_code = e.args[2]
+        except IndexError:
+            error_code = None
+
+        if q:
+            sql_text = q % tuple(p)
+        else:
+            sql_text = q
+        return tuple([error_msg, sql_code, error_code, {'sql': sql_text, 'params': p}])
 
     def __getattr__(self, attr):
         if attr in self.__dict__:
