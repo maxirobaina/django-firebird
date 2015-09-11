@@ -1,10 +1,13 @@
 import sys
 import fdb as Database
 
-from django.db.backends.creation import BaseDatabaseCreation
+#from django.db.backends.creation import BaseDatabaseCreation
+from django.db.backends.base.creation import BaseDatabaseCreation
+
 from django.utils.six.moves import input
 
 TEST_MODE = 0
+
 
 class DatabaseCreation(BaseDatabaseCreation):
     # This dictionary maps Field objects to their associated Firebird column
@@ -125,8 +128,10 @@ class DatabaseCreation(BaseDatabaseCreation):
         return test_database_name
 
     def _destroy_test_db(self, test_database_name, verbosity):
+        """
+        Internal implementation - remove the test db tables.
+        """
         self._check_active_connection(verbosity)
         connection = Database.connect(**self._get_connection_params(database=test_database_name))
         connection.drop_database()
         connection.close()
-
