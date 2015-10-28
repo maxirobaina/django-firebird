@@ -43,10 +43,10 @@ class DatabaseOperations(BaseDatabaseOperations):
             '      new.%(column_name)s = %(next_value_sql)s;',
             'END'
         ]) % {
-                'trigger_name': trigger_name,
-                'table_name': table_name,
-                'column_name': column_name,
-                'next_value_sql': next_value_sql
+            'trigger_name': trigger_name,
+            'table_name': table_name,
+            'column_name': column_name,
+            'next_value_sql': next_value_sql
         }
 
         return sequence_sql, trigger_sql
@@ -66,7 +66,7 @@ class DatabaseOperations(BaseDatabaseOperations):
         if lookup_type == 'week_day':
             return "EXTRACT(WEEKDAY FROM %s) + 1" % field_name
         return "EXTRACT(%s FROM %s)" % (lookup_type.upper(), field_name)
-        
+
     def date_interval_sql(self, sql, connector, timedelta):
         """
         Implements the date interval functionality for expressions
@@ -91,7 +91,7 @@ class DatabaseOperations(BaseDatabaseOperations):
         elif lookup_type == 'day':
             sql = "EXTRACT(year FROM %s)||'-'||EXTRACT(month FROM %s)||'-'||EXTRACT(day FROM %s)||' 00:00:00'" % (field_name, field_name, field_name)
         return "CAST(%s AS TIMESTAMP)" % sql
-        
+
     def datetime_extract_sql(self, lookup_type, field_name, tzname):
         """
         Given a lookup_type of 'year', 'month', 'day', 'hour', 'minute' or
@@ -194,6 +194,7 @@ class DatabaseOperations(BaseDatabaseOperations):
         if not name.startswith('"') and not name.endswith('"'):
             name = '"%s"' % util.truncate_name(name, self.max_name_length())
         return name.upper()
+        #return name
 
     def pk_default_value(self):
         return 'NULL'
@@ -341,6 +342,9 @@ class DatabaseOperations(BaseDatabaseOperations):
 
     def get_sequence_name(self, table_name):
         return get_autoinc_sequence_name(self, table_name)
+
+    def get_sequence_trigger_name(self, table_name):
+        return get_autoinc_trigger_name(self, table_name)
 
     def value_to_db_datetime(self, value):
         """
