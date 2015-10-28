@@ -1,9 +1,16 @@
 Changelog
 =========
 
+v1.7.0 alpha
+------------
++ Support for Django v1.7.x
++ First implementation of new schema migration feature
+
+
 v1.6.4
 ------
 + Fixed Error when extract exception info (fdb related bug) #44
+
 
 v1.6.3
 ------
