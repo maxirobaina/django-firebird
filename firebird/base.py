@@ -133,7 +133,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
             conn_params['user'] = settings_dict['USER']
         if settings_dict['PASSWORD']:
             conn_params['password'] = settings_dict['PASSWORD']
-        if settings_dict['ROLE']:
+        if 'ROLE' in settings_dict:
             conn_params['role'] = settings_dict['ROLE']
         options = settings_dict['OPTIONS'].copy()
         conn_params.update(options)

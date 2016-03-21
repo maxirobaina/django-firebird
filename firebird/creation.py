@@ -69,7 +69,7 @@ class DatabaseCreation(BaseDatabaseCreation):
             conn_params['user'] = settings_dict['USER']
         if settings_dict['PASSWORD']:
             conn_params['password'] = settings_dict['PASSWORD']
-        if settings_dict['ROLE']:
+        if 'ROLE' in settings_dict:
             conn_params['role'] = settings_dict['ROLE']
         conn_params.update(settings_dict['OPTIONS'])
         conn_params.update(overrides)
