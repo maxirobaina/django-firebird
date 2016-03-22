@@ -34,12 +34,19 @@ class DatabaseCreation(BaseDatabaseCreation):
         'GenericIPAddressField': 'char(39)',
         'NullBooleanField':  'smallint',
         'OneToOneField':     'integer',
-        'PositiveIntegerField': 'integer CHECK (%(qn_column)s >= 0)',
-        'PositiveSmallIntegerField': 'smallint CHECK (%(qn_column)s >= 0)',
+        'PositiveIntegerField': 'integer',
+        'PositiveSmallIntegerField': 'smallint',
         'SlugField':         'varchar(%(max_length)s)',
         'SmallIntegerField': 'smallint',
         'TextField':         'blob sub_type 1',
         'TimeField':         'time',
+    }
+
+    data_type_check_constraints = {
+        'BooleanField': '%(qn_column)s IN (0,1)',
+        'NullBooleanField': '(%(qn_column)s IN (0,1)) OR (%(qn_column)s IS NULL)',
+        'PositiveIntegerField': '%(qn_column)s >= 0',
+        'PositiveSmallIntegerField': '%(qn_column)s >= 0',
     }
 
     def sql_for_inline_foreign_key_references(self, model, field, known_models, style):
