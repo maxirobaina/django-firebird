@@ -35,9 +35,10 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
     def get_table_list(self, cursor):
         "Returns a list of table names in the current database."
         cursor.execute("""
-            select rdb$relation_name from rdb$relations
-            where rdb$system_flag = 0 and rdb$view_source is null
-            order by rdb$relation_name""")
+            select rdb$relation_name
+            from rdb$relations
+            where rdb$system_flag=0
+            order by 1  """)
         return [r[0].strip().lower() for r in cursor.fetchall()]
 
     def get_table_description(self, cursor, table_name):
