@@ -1,8 +1,8 @@
 Changelog
 =========
 
-v1.7.0 beta 1
--------------
+v1.7.0
+------
 + Support for Django v1.7.x
 + First implementation of new schema migration feature
 + Role support #50
