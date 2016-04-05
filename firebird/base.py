@@ -13,68 +13,70 @@ except ImportError as e:
 from fdb.ibase import charset_map
 
 from django.db import utils
-from django.db.backends import (
-    BaseDatabaseFeatures,
-    BaseDatabaseWrapper,
-    BaseDatabaseValidation,
-)
-from django.db.backends.signals import connection_created
+from django.db.backends.base.base import BaseDatabaseWrapper
+
 from django.utils.encoding import smart_str
 from django.utils.functional import cached_property
 from django.utils import six
 
 from .operations import DatabaseOperations
+from .features import DatabaseFeatures
 from .client import DatabaseClient
 from .creation import DatabaseCreation
 from .introspection import DatabaseIntrospection
 from .schema import DatabaseSchemaEditor
+from .validation import DatabaseValidation
+
 
 DatabaseError = Database.DatabaseError
 IntegrityError = Database.IntegrityError
 OperationalError = Database.OperationalError
 
 
-class DatabaseFeatures(BaseDatabaseFeatures):
-    allows_group_by_pk = False  # if the backend can group by just by PK
-    supports_forward_references = False
-    has_bulk_insert = False
-    can_return_id_from_insert = True
-    has_select_for_update = True
-    has_select_for_update_nowait = False
-    supports_forward_references = False
-    supports_tablespaces = False
-    supports_long_model_names = False
-    supports_timezones = False
-    has_zoneinfo_database = False
-    uses_savepoints = True
-    supports_paramstyle_pyformat = False
-    #connection_persists_old_columns = True
-    can_rollback_ddl = True
-    requires_literal_defaults = True
-    has_case_insensitive_like = False
-
-    # In firebird, check constraint are table based, no column based
-    supports_column_check_constraints = False
-
-    can_introspect_boolean_field = False
-    can_introspect_small_integer_field = True
-
-    # If NULL is implied on columns without needing to be explicitly specified
-    implied_column_null = True
-
-    uppercases_column_names = True
-
-    @cached_property
-    def supports_transactions(self):
-        return True
-
-
-class DatabaseValidation(BaseDatabaseValidation):
-    pass
-
-
 class DatabaseWrapper(BaseDatabaseWrapper):
     vendor = 'firebird'
+
+    # This dictionary maps Field objects to their associated Firebird column
+    # types, as strings. Column-type strings can contain format strings; they'll
+    # be interpolated against the values of Field.__dict__ before being output.
+    # If a column type is set to None, it won't be included in the output.
+    #
+    # Any format strings starting with "qn_" are quoted before being used in the
+    # output (the "qn_" prefix is stripped before the lookup is performed.
+
+    data_types = {
+        'AutoField':         'integer',
+        'BinaryField':       'blob sub_type 0',
+        'BooleanField':      'smallint',
+        'CharField':         'varchar(%(max_length)s)',
+        'CommaSeparatedIntegerField': 'varchar(%(max_length)s)',
+        'DateField':         'date',
+        'DateTimeField':     'timestamp',
+        'DecimalField':      'decimal(%(max_digits)s, %(decimal_places)s)',
+        'FileField':         'varchar(%(max_length)s)',
+        'FilePathField':     'varchar(%(max_length)s)',
+        'FloatField':        'double precision',
+        'IntegerField':      'integer',
+        'BigIntegerField':   'bigint',
+        'IPAddressField':    'char(15)',
+        'GenericIPAddressField': 'char(39)',
+        'NullBooleanField':  'smallint',
+        'OneToOneField':     'integer',
+        'PositiveIntegerField': 'integer',
+        'PositiveSmallIntegerField': 'smallint',
+        'SlugField':         'varchar(%(max_length)s)',
+        'SmallIntegerField': 'smallint',
+        'TextField':         'blob sub_type 1',
+        'TimeField':         'time',
+    }
+
+    data_type_check_constraints = {
+        'BooleanField': '%(qn_column)s IN (0,1)',
+        'NullBooleanField': '(%(qn_column)s IN (0,1)) OR (%(qn_column)s IS NULL)',
+        'PositiveIntegerField': '%(qn_column)s >= 0',
+        'PositiveSmallIntegerField': '%(qn_column)s >= 0',
+    }
+
     operators = {
         'exact': '= %s',
         'iexact': '= UPPER(%s)',
@@ -93,6 +95,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
     }
 
     Database = Database
+    SchemaEditorClass = DatabaseSchemaEditor
 
     def __init__(self, *args, **kwargs):
         super(DatabaseWrapper, self).__init__(*args, **kwargs)
@@ -209,10 +212,6 @@ class DatabaseWrapper(BaseDatabaseWrapper):
             self._server_version = self.connection.db_info(Database.isc_info_firebird_version)
         return self._server_version
 
-    def schema_editor(self, *args, **kwargs):
-        "Returns a new instance of this backend's SchemaEditor"
-        return DatabaseSchemaEditor(self, *args, **kwargs)
-
 
 class FirebirdCursorWrapper(object):
     """
@@ -240,7 +239,6 @@ class FirebirdCursorWrapper(object):
             # fdb: raise exception as tuple with (error_msg, sqlcode, error_code)
             if e.args[1] in self.codes_for_integrityerror:
                 six.reraise(utils.IntegrityError, utils.IntegrityError(*self.error_info(e, query, params)), sys.exc_info()[2])
-            #six.reraise(utils.DatabaseError, utils.DatabaseError(*self.error_info(e, query, params)), sys.exc_info()[2])
             raise
 
     def executemany(self, query, param_list):
@@ -255,7 +253,6 @@ class FirebirdCursorWrapper(object):
             # fdb: raise exception as tuple with (error_msg, sqlcode, error_code)
             if e.args[1] in self.codes_for_integrityerror:
                 six.reraise(utils.IntegrityError, utils.IntegrityError(*self.error_info(e, query, param_list[0])), sys.exc_info()[2])
-            #six.reraise(utils.DatabaseError, utils.DatabaseError(*self.error_info(e, query, param_list[0])), sys.exc_info()[2])
             raise
 
     def convert_query(self, query, num_params):

@@ -1,7 +1,8 @@
 from datetime import datetime
 
 from django.conf import settings
-from django.db.backends import BaseDatabaseOperations, util
+from django.db.backends.base.operations import BaseDatabaseOperations
+from django.db.backends import utils
 from django.utils.functional import cached_property
 from django.utils import six
 from django.utils import timezone
@@ -67,21 +68,12 @@ class DatabaseOperations(BaseDatabaseOperations):
             return "EXTRACT(WEEKDAY FROM %s) + 1" % field_name
         return "EXTRACT(%s FROM %s)" % (lookup_type.upper(), field_name)
 
-    def date_interval_sql(self, sql, connector, timedelta):
+    def date_interval_sql(self, timedelta):
         """
-        Implements the date interval functionality for expressions
+        Implements the date interval functionality for expressions.
+        Do nothing here, we'll handle it in the combine_duration_expression method.
         """
-        sign = 1 if connector == '+' else -1
-        if timedelta.days:
-            unit = 'day'
-            value = timedelta.days
-        elif timedelta.seconds:
-            unit = 'second'
-            value = ((timedelta.days * 86400) + timedelta.seconds)
-        elif timedelta.microseconds:
-            unit = 'millisecond'
-            value = timedelta.microseconds
-        return 'DATEADD(%s %s TO %s)' % (value * sign, unit, sql)
+        return timedelta, []
 
     def date_trunc_sql(self, lookup_type, field_name):
         if lookup_type == 'year':
@@ -131,7 +123,7 @@ class DatabaseOperations(BaseDatabaseOperations):
             sql = "%s||'-'||%s||'-'||%s||' '||%s||':'||%s||':'||%s" % (year, month, day, hh, mm, ss)
         return "CAST(%s AS TIMESTAMP)" % sql, []
 
-    def lookup_cast(self, lookup_type):
+    def lookup_cast(self, lookup_type, internal_type=None):
         if lookup_type in ('iexact', 'icontains', 'istartswith', 'iendswith'):
             return "UPPER(%s)"
         return "%s"
@@ -141,7 +133,7 @@ class DatabaseOperations(BaseDatabaseOperations):
         Returns the FOR UPDATE SQL clause to lock rows for an update operation.
         """
         # The nowait param depends on transaction setting
-        #return 'FOR UPDATE WITH LOCK'
+        # return 'FOR UPDATE WITH LOCK'
         return 'FOR UPDATE'
 
     def fulltext_search_sql(self, field_name):
@@ -169,16 +161,32 @@ class DatabaseOperations(BaseDatabaseOperations):
 
     def convert_values(self, value, field):
         if value is not None and field and field.get_internal_type() == 'DecimalField':
-            value = util.typecast_decimal(field.format_number(value))
+            value = utils.typecast_decimal(field.format_number(value))
         elif value in (1, 0) and field and field.get_internal_type() in ('BooleanField', 'NullBooleanField'):
             value = bool(value)
         # Force floats to the correct type
         elif value is not None and field and field.get_internal_type() == 'FloatField':
             value = float(value)
-        elif value is not None and field and (field.get_internal_type().endswith('IntegerField')
-                                              or field.get_internal_type() == 'AutoField'):
+        elif value is not None and field and (field.get_internal_type().endswith('IntegerField') or field.get_internal_type() == 'AutoField'):
             return int(value)
         return value
+
+    def combine_duration_expression(self, connector, sub_expressions):
+        if connector not in ['+', '-']:
+            raise utils.DatabaseError('Invalid connector for timedelta: %s.' % connector)
+
+        sign = 1 if connector == '+' else -1
+        sql, timedelta = sub_expressions
+        if timedelta.days:
+            unit = 'day'
+            value = timedelta.days
+        elif timedelta.seconds:
+            unit = 'second'
+            value = ((timedelta.days * 86400) + timedelta.seconds)
+        elif timedelta.microseconds:
+            unit = 'millisecond'
+            value = timedelta.microseconds
+        return 'DATEADD(%s %s TO %s)' % (value * sign, unit, sql)
 
     def year_lookup_bounds(self, value):
         first = '%s-01-01 00:00:00'
@@ -192,9 +200,8 @@ class DatabaseOperations(BaseDatabaseOperations):
 
     def quote_name(self, name):
         if not name.startswith('"') and not name.endswith('"'):
-            name = '"%s"' % util.truncate_name(name, self.max_name_length())
+            name = '"%s"' % utils.truncate_name(name, self.max_name_length())
         return name.upper()
-        #return name
 
     def pk_default_value(self):
         return 'NULL'
@@ -364,7 +371,7 @@ class DatabaseOperations(BaseDatabaseOperations):
         if isinstance(value, datetime):
             value = str(value)
         if isinstance(value, six.string_types):
-            #Replaces 6 digits microseconds to 4 digits allowed in Firebird
+            # Replaces 6 digits microseconds to 4 digits allowed in Firebird
             value = value[:24]
         return six.text_type(value)
 
@@ -380,10 +387,12 @@ class DatabaseOperations(BaseDatabaseOperations):
 
 
 def get_autoinc_sequence_name(ops, table):
-    return ops.quote_name('%s_SQ' % util.truncate_name(table, ops.max_name_length() - 3))
+    return ops.quote_name('%s_SQ' % utils.truncate_name(table, ops.max_name_length() - 3))
+
 
 def get_autoinc_trigger_name(ops, table):
-    return ops.quote_name('%s_PK' % util.truncate_name(table, ops.max_name_length() - 3))
+    return ops.quote_name('%s_PK' % utils.truncate_name(table, ops.max_name_length() - 3))
+
 
 def get_reset_procedure_name(ops, table):
-    return ops.quote_name('%s_RS' % util.truncate_name(table, ops.max_name_length() - 3))
+    return ops.quote_name('%s_RS' % utils.truncate_name(table, ops.max_name_length() - 3))

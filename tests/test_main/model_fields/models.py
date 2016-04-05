@@ -1,11 +1,9 @@
 import os
 import tempfile
 
-from django.core.exceptions import ImproperlyConfigured
-
 try:
-    from django.utils.image import Image
-except ImproperlyConfigured:
+    from PIL import Image
+except ImportError:
     Image = None
 
 from django.core.files.storage import FileSystemStorage

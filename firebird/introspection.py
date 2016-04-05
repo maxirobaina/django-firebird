@@ -1,4 +1,6 @@
-from django.db.backends import BaseDatabaseIntrospection
+from django.db.backends.base.introspection import (
+    BaseDatabaseIntrospection, FieldInfo, TableInfo,
+)
 
 
 class DatabaseIntrospection(BaseDatabaseIntrospection):
@@ -35,18 +37,24 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
     def get_table_list(self, cursor):
         "Returns a list of table names in the current database."
         cursor.execute("""
-            select rdb$relation_name
+            select
+                lower(trim(rdb$relation_name)),
+                case when RDB$VIEW_BLR IS NULL then 't' else 'v' end as rel_type
             from rdb$relations
             where rdb$system_flag=0
-            order by 1  """)
-        return [r[0].strip().lower() for r in cursor.fetchall()]
+            order by 1 """)
+        # return [r[0].strip().lower() for r in cursor.fetchall()]
+        return [TableInfo(row[0], row[1]) for row in cursor.fetchall()]
 
     def get_table_description(self, cursor, table_name):
-        "Returns a description of the table, with the DB-API cursor.description interface."
+        """
+        Returns a description of the table, with the DB-API cursor.description interface.
+        Must return a 'FieldInfo' struct 'name type_code display_size internal_size precision scale null_ok'
+        """
         tbl_name = "'%s'" % table_name.upper()
         cursor.execute("""
             select
-              rf.rdb$field_name
+              lower(trim(rf.rdb$field_name))
               , case
                   when (f.rdb$field_type in (7,8,16)) and (f.rdb$field_sub_type > 0) then
                     160 + f.rdb$field_sub_type
@@ -65,7 +73,11 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
             order by
               rf.rdb$field_position
             """ % (tbl_name,))
-        return [(r[0].strip().lower(), r[1], r[2], r[2] or 0, r[3], r[4], not (r[5] == 1)) for r in cursor.fetchall()]
+        # return [(r[0].strip().lower(), r[1], r[2], r[2] or 0, r[3], r[4], not (r[5] == 1)) for r in cursor.fetchall()]
+        items = []
+        for r in cursor.fetchall():
+            items.append(FieldInfo(r[0], r[1], r[2], r[2] or 0, r[3], r[4], not (r[5] == 1)))
+        return items
 
     def _name_to_index(self, cursor, table_name):
         """Return a dictionary of {field_name: field_index} for the given table.
@@ -234,4 +246,3 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
             constraints[constraint]['columns'].append(column)
 
         return constraints
-

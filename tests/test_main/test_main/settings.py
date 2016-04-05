@@ -13,8 +13,13 @@ DATABASES = {
         'HOST': '127.0.0.1',
         'PORT': '',
         'OPTIONS': {'charset': 'ISO8859_1'},
-        'TEST_NAME': 'django-test-default',
-        'TEST_CHARSET': 'ISO8859_1'
+
+        'TEST': {
+            'NAME': 'django-test-default',
+            'CHARSET': 'ISO8859_1',
+            'SERIALIZE': False
+
+        }
     },
     'other': {
         'ENGINE': 'firebird',
@@ -24,8 +29,13 @@ DATABASES = {
         'HOST': '127.0.0.1',
         'PORT': '',
         'OPTIONS': {'charset': 'ISO8859_1'},
-        'TEST_NAME': 'django-test-other',
-        'TEST_CHARSET': 'ISO8859_1'
+
+        'TEST': {
+            'NAME': 'django-test-other',
+            'CHARSET': 'ISO8859_1',
+            'SERIALIZE': False
+
+        }
     }
 
 }

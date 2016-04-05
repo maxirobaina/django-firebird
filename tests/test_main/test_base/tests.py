@@ -1,4 +1,4 @@
-#-*- utf-8 -*-
+# -*- coding: utf-8 -*-
 
 from datetime import datetime, timedelta
 
@@ -82,7 +82,7 @@ class SlugFieldTests(TestCase):
         """
         Make sure SlugField honors max_length (#9706)
         """
-        bs = BigS.objects.create(s = 'slug'*50)
+        bs = BigS.objects.create(s='slug'*50)
         bs = BigS.objects.get(pk=bs.pk)
         self.assertEqual(bs.s, 'slug'*50)
 
@@ -96,4 +96,3 @@ class DateFieldTests(TestCase):
 
         objs = FieldsTest.objects.filter(mod_date__gte=F('pub_date') + timedelta(days=3)).all()
         self.assertEqual(len(objs), 1)
-

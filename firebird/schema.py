@@ -5,8 +5,8 @@ from django.utils import six
 from django.utils.encoding import force_str
 from django.db.models.fields import AutoField
 from django.db.models.fields.related import ManyToManyField
-from django.db.backends.schema import BaseDatabaseSchemaEditor
-from django.db.backends.schema import _related_objects
+from django.db.backends.base.schema import BaseDatabaseSchemaEditor
+from django.db.backends.base.schema import _related_non_m2m_objects as _related_objects
 
 
 class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
@@ -386,3 +386,17 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         with self.connection.cursor() as cursor:
             value = cursor.execute(sql)
         return True if value else False
+
+    def execute(self, sql, params=[]):
+        """
+        Executes the given SQL statement, with optional parameters.
+        """
+        # print("schema:", sql)
+        # Log the command we're running, then run it
+        # logger.debug("%s; (params %r)" % (sql, params))
+        if self.collect_sql:
+            self.collected_sql.append((sql % tuple(map(self.quote_value, params))) + ";")
+        else:
+            with self.connection.cursor() as cursor:
+                cursor.execute(sql, params)
+            # self.connection.commit()

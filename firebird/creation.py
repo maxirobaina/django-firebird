@@ -1,53 +1,13 @@
 import sys
 import fdb as Database
 
-from django.db.backends.creation import BaseDatabaseCreation
+from django.db.backends.base.creation import BaseDatabaseCreation
 from django.utils.six.moves import input
 
 TEST_MODE = 0
 
 
 class DatabaseCreation(BaseDatabaseCreation):
-    # This dictionary maps Field objects to their associated Firebird column
-    # types, as strings. Column-type strings can contain format strings; they'll
-    # be interpolated against the values of Field.__dict__ before being output.
-    # If a column type is set to None, it won't be included in the output.
-    #
-    # Any format strings starting with "qn_" are quoted before being used in the
-    # output (the "qn_" prefix is stripped before the lookup is performed.
-
-    data_types = {
-        'AutoField':         'integer',
-        'BinaryField':       'blob sub_type 0',
-        'BooleanField':      'smallint',
-        'CharField':         'varchar(%(max_length)s)',
-        'CommaSeparatedIntegerField': 'varchar(%(max_length)s)',
-        'DateField':         'date',
-        'DateTimeField':     'timestamp',
-        'DecimalField':      'decimal(%(max_digits)s, %(decimal_places)s)',
-        'FileField':         'varchar(%(max_length)s)',
-        'FilePathField':     'varchar(%(max_length)s)',
-        'FloatField':        'double precision',
-        'IntegerField':      'integer',
-        'BigIntegerField':   'bigint',
-        'IPAddressField':    'char(15)',
-        'GenericIPAddressField': 'char(39)',
-        'NullBooleanField':  'smallint',
-        'OneToOneField':     'integer',
-        'PositiveIntegerField': 'integer',
-        'PositiveSmallIntegerField': 'smallint',
-        'SlugField':         'varchar(%(max_length)s)',
-        'SmallIntegerField': 'smallint',
-        'TextField':         'blob sub_type 1',
-        'TimeField':         'time',
-    }
-
-    data_type_check_constraints = {
-        'BooleanField': '%(qn_column)s IN (0,1)',
-        'NullBooleanField': '(%(qn_column)s IN (0,1)) OR (%(qn_column)s IS NULL)',
-        'PositiveIntegerField': '%(qn_column)s >= 0',
-        'PositiveSmallIntegerField': '%(qn_column)s >= 0',
-    }
 
     def sql_for_inline_foreign_key_references(self, model, field, known_models, style):
         # Always pending
@@ -95,13 +55,12 @@ class DatabaseCreation(BaseDatabaseCreation):
                         CREATE DATABASE '%(database)s'
                         USER '%(user)s'
                         PASSWORD '%(password)s'
-                        DEFAULT CHARACTER SET %(charset)s;""" % params
-        )
+                        DEFAULT CHARACTER SET %(charset)s;""" % params)
         connection.execute_immediate("CREATE EXCEPTION teste '';")
         connection.commit()
         connection.close()
 
-    def _create_test_db(self, verbosity, autoclobber):
+    def _create_test_db(self, verbosity, autoclobber, keepdb=False):
         """"
         Internal implementation - creates the test db tables.
         """
@@ -112,6 +71,11 @@ class DatabaseCreation(BaseDatabaseCreation):
             if verbosity >= 1:
                 print("Database %s created..." % test_database_name)
         except Exception as e:
+            # if we want to keep the db, then no need to do any of the below,
+            # just return and skip it all.
+            if keepdb:
+                return test_database_name
+
             sys.stderr.write("Got an error creating the test database: %s\n" % e)
             if not autoclobber:
                 confirm = input("Type 'yes' if you would like to try deleting the test database '%s', or 'no' to cancel: " % test_database_name)
