@@ -68,6 +68,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         'SmallIntegerField': 'smallint',
         'TextField':         'blob sub_type 1',
         'TimeField':         'time',
+        'UUIDField': 'char(32)',
     }
 
     data_type_check_constraints = {
