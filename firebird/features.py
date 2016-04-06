@@ -35,3 +35,19 @@ class DatabaseFeatures(BaseDatabaseFeatures):
     @cached_property
     def supports_transactions(self):
         return True
+
+    def introspected_boolean_field_type(self, field=None, created_separately=False):
+        """
+        What is the type returned when the backend introspects a BooleanField?
+        The optional arguments may be used to give further details of the field to be
+        introspected; in particular, they are provided by Django's test suite:
+        field -- the field definition
+        created_separately -- True if the field was added via a SchemaEditor's AddField,
+                              False if the field was created with the model
+
+        Note that return value from this function is compared by tests against actual
+        introspection results; it should provide expectations, not run an introspection
+        itself.
+        """
+
+        return 'SmallIntegerField'
