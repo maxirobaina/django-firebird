@@ -1,3 +1,5 @@
+import uuid
+
 from datetime import datetime
 
 from django.conf import settings
@@ -159,7 +161,7 @@ class DatabaseOperations(BaseDatabaseOperations):
     def no_limit_value(self):
         return None
 
-    def convert_values(self, value, field):
+    def __convert_values(self, value, field):
         if value is not None and field and field.get_internal_type() == 'DecimalField':
             value = utils.typecast_decimal(field.format_number(value))
         elif value in (1, 0) and field and field.get_internal_type() in ('BooleanField', 'NullBooleanField'):
@@ -169,6 +171,27 @@ class DatabaseOperations(BaseDatabaseOperations):
             value = float(value)
         elif value is not None and field and (field.get_internal_type().endswith('IntegerField') or field.get_internal_type() == 'AutoField'):
             return int(value)
+        return value
+
+    def get_db_converters(self, expression):
+        converters = super(DatabaseOperations, self).get_db_converters(expression)
+        internal_type = expression.output_field.get_internal_type()
+        if internal_type in ['BooleanField', 'NullBooleanField']:
+            converters.append(self.convert_booleanfield_value)
+        if internal_type == 'UUIDField':
+            converters.append(self.convert_uuidfield_value)
+        # if internal_type == 'TextField':
+        #    converters.append(self.convert_textfield_value)
+        return converters
+
+    def convert_booleanfield_value(self, value, expression, connection, context):
+        if value in (0, 1):
+            value = bool(value)
+        return value
+
+    def convert_uuidfield_value(self, value, expression, connection, context):
+        if value is not None:
+            value = uuid.UUID(value)
         return value
 
     def combine_duration_expression(self, connector, sub_expressions):
