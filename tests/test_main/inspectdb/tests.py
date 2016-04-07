@@ -9,6 +9,8 @@ from django.db import connection
 from django.test import TestCase, skipUnlessDBFeature
 from django.utils.six import PY3, StringIO
 
+from .models import ColumnTypes
+
 
 class InspectDBTestCase(TestCase):
 
@@ -49,12 +51,13 @@ class InspectDBTestCase(TestCase):
         if (connection.features.can_introspect_max_length and
                 not connection.features.interprets_empty_strings_as_nulls):
             assertFieldType('char_field', "models.CharField(max_length=10)")
+            assertFieldType('null_char_field', "models.CharField(max_length=10, blank=True, null=True)")
             assertFieldType('comma_separated_int_field', "models.CharField(max_length=99)")
         assertFieldType('date_field', "models.DateField()")
         assertFieldType('date_time_field', "models.DateTimeField()")
         if (connection.features.can_introspect_max_length and
                 not connection.features.interprets_empty_strings_as_nulls):
-            assertFieldType('email_field', "models.CharField(max_length=75)")
+            assertFieldType('email_field', "models.CharField(max_length=254)")
             assertFieldType('file_field', "models.CharField(max_length=100)")
             assertFieldType('file_path_field', "models.CharField(max_length=100)")
         if connection.features.can_introspect_ip_address_field:
@@ -87,18 +90,18 @@ class InspectDBTestCase(TestCase):
         else:
             assertFieldType('big_int_field', "models.IntegerField()")
 
-        if connection.features.can_introspect_boolean_field:
-            assertFieldType('bool_field', "models.BooleanField()")
-            if connection.features.can_introspect_null:
-                assertFieldType('null_bool_field', "models.NullBooleanField()")
-            else:
-                assertFieldType('null_bool_field', "models.BooleanField()")
+        bool_field = ColumnTypes._meta.get_field('bool_field')
+        bool_field_type = connection.features.introspected_boolean_field_type(bool_field)
+        assertFieldType('bool_field', "models.{}()".format(bool_field_type))
+        null_bool_field = ColumnTypes._meta.get_field('null_bool_field')
+        null_bool_field_type = connection.features.introspected_boolean_field_type(null_bool_field)
+        if 'BooleanField' in null_bool_field_type:
+            assertFieldType('null_bool_field', "models.{}()".format(null_bool_field_type))
         else:
-            assertFieldType('bool_field', "models.SmallIntegerField()")
             if connection.features.can_introspect_null:
-                assertFieldType('null_bool_field', "models.SmallIntegerField(blank=True, null=True)")
+                assertFieldType('null_bool_field', "models.{}(blank=True, null=True)".format(null_bool_field_type))
             else:
-                assertFieldType('null_bool_field', "models.SmallIntegerField()")
+                assertFieldType('null_bool_field', "models.{}()".format(null_bool_field_type))
 
         if connection.features.can_introspect_decimal_field:
             assertFieldType('decimal_field', "models.DecimalField(max_digits=6, decimal_places=1)")
@@ -179,7 +182,9 @@ class InspectDBTestCase(TestCase):
         unsuitable for Python identifiers
         """
         out = StringIO()
-        call_command('inspectdb', stdout=out)
+        call_command('inspectdb',
+                     table_name_filter=lambda tn: tn.startswith('inspectdb_'),
+                     stdout=out)
         output = out.getvalue()
         base_name = 'Field' if not connection.features.uppercases_column_names else 'field'
         self.assertIn("field = models.IntegerField()", output)
@@ -193,6 +198,18 @@ class InspectDBTestCase(TestCase):
         else:
             self.assertIn("tama_o = models.IntegerField(db_column='tama\\xf1o')", output)
 
+    def test_table_name_introspection(self):
+        """
+        Introspection of table names containing special characters,
+        unsuitable for Python identifiers
+        """
+        out = StringIO()
+        call_command('inspectdb',
+                     table_name_filter=lambda tn: tn.startswith('inspectdb_'),
+                     stdout=out)
+        output = out.getvalue()
+        self.assertIn("class InspectdbSpecialTableName(models.Model):", output)
+
     def test_managed_models(self):
         """Test that by default the command generates models with `Meta.managed = False` (#14305)"""
         out = StringIO()
@@ -202,6 +219,25 @@ class InspectDBTestCase(TestCase):
         output = out.getvalue()
         self.longMessage = False
         self.assertIn("        managed = False", output, msg='inspectdb should generate unmanaged models.')
+
+    def test_unique_together_meta(self):
+        out = StringIO()
+        call_command('inspectdb',
+                     table_name_filter=lambda tn: tn.startswith('inspectdb_uniquetogether'),
+                     stdout=out)
+        output = out.getvalue()
+        unique_re = re.compile(r'.*unique_together = \((.+),\).*')
+        unique_together_match = re.findall(unique_re, output)
+        # There should be one unique_together tuple.
+        self.assertEqual(len(unique_together_match), 1)
+        fields = unique_together_match[0]
+        # Fields with db_column = field name.
+        self.assertIn("('field1', 'field2')", fields)
+        # Fields from columns whose names are Python keywords.
+        self.assertIn("('field1', 'field2')", fields)
+        # Fields whose names normalize to the same Python field name and hence
+        # are given an integer suffix.
+        self.assertIn("('non_unique_column', 'non_unique_column_0')", fields)
 
     @skipUnless(connection.vendor == 'sqlite',
                 "Only patched sqlite's DatabaseIntrospection.data_types_reverse for this test")

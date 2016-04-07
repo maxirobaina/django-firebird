@@ -24,6 +24,7 @@ class DatabaseFeatures(BaseDatabaseFeatures):
     # In firebird, check constraint are table based, no column based
     supports_column_check_constraints = False
 
+    can_introspect_foreign_keys = True
     can_introspect_boolean_field = False
     can_introspect_small_integer_field = True
 

@@ -170,17 +170,28 @@ class BooleanFieldTests(unittest.TestCase):
     def test_nullbooleanfield_to_python(self):
         self._test_to_python(models.NullBooleanField())
 
+    # def test_booleanfield_choices_blank(self):
+    #     """
+    #     Test that BooleanField with choices and defaults doesn't generate a
+    #     formfield with the blank option (#9640, #10549).
+    #     """
+    #     choices = [(1, 'Si'), (2, 'No')]
+    #     f = models.BooleanField(choices=choices, default=1, null=True)
+    #     self.assertEqual(f.formfield().choices, [('', '---------')] + choices)
+
+    #     f = models.BooleanField(choices=choices, default=1, null=False)
+    #     self.assertEqual(f.formfield().choices, choices)
+
     def test_booleanfield_choices_blank(self):
         """
         Test that BooleanField with choices and defaults doesn't generate a
         formfield with the blank option (#9640, #10549).
         """
         choices = [(1, 'Si'), (2, 'No')]
-        f = models.BooleanField(choices=choices, default=1, null=True)
-        self.assertEqual(f.formfield().choices, [('', '---------')] + choices)
-
         f = models.BooleanField(choices=choices, default=1, null=False)
         self.assertEqual(f.formfield().choices, choices)
+
+
 
     def test_return_type(self):
         b = BooleanModel()
