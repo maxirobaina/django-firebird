@@ -10,9 +10,21 @@ from django.utils import six
 from django.utils import timezone
 from django.utils.encoding import force_bytes
 
+from .base import Database
+
 
 class DatabaseOperations(BaseDatabaseOperations):
     compiler_module = "firebird.compiler"
+
+    # Integer field safe ranges by `internal_type` as documented
+    # in docs/ref/models/fields.txt.
+    integer_field_ranges = {
+        'SmallIntegerField': (Database.SHRT_MIN, Database.SHRT_MAX),
+        'IntegerField': (Database.INT_MIN, Database.INT_MAX),
+        'BigIntegerField': (Database.LONG_MIN, Database.LONG_MAX),
+        'PositiveSmallIntegerField': (0, Database.SHRT_MAX),
+        'PositiveIntegerField': (0, Database.INT_MAX),
+    }
 
     def __init__(self, connection, *args, **kwargs):
         try:
