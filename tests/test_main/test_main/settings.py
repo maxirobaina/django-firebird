@@ -144,6 +144,7 @@ INSTALLED_APPS = (
     'introspection',
     'inspectdb',
     'datatypes',
+    'dates',
 )
 
 # A sample logging configuration. The only tangible logging
