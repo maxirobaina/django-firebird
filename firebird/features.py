@@ -21,6 +21,12 @@ class DatabaseFeatures(BaseDatabaseFeatures):
     requires_literal_defaults = True
     has_case_insensitive_like = False
 
+    # Is there a true datatype for uuid?
+    has_native_uuid_field = False
+
+    # Is there a true datatype for timedeltas?
+    has_native_duration_field = False
+
     # In firebird, check constraint are table based, no column based
     supports_column_check_constraints = False
 
