@@ -1,21 +1,26 @@
-from __future__ import absolute_import
+from __future__ import unicode_literals
 
 import os
 import shutil
+from unittest import skipIf
 
+from django.core.exceptions import ImproperlyConfigured
 from django.core.files import File
 from django.core.files.images import ImageFile
 from django.test import TestCase
-from django.utils.unittest import skipIf
+from django.utils._os import upath
 
-from .models import Image
+try:
+    from .models import Image
+except ImproperlyConfigured:
+    Image = None
 
 if Image:
     from .models import (Person, PersonWithHeight, PersonWithHeightAndWidth,
         PersonDimensionsFirst, PersonTwoImages, TestImageFieldFile)
     from .models import temp_storage_dir
 else:
-    # PIL not available, create dummy classes (tests will be skipped anyway)
+    # Pillow not available, create dummy classes (tests will be skipped anyway)
     class Person():
         pass
     PersonWithHeight = PersonWithHeightAndWidth = PersonDimensionsFirst = Person
@@ -43,16 +48,18 @@ class ImageFieldTestMixin(object):
             shutil.rmtree(temp_storage_dir)
         os.mkdir(temp_storage_dir)
 
-        file_path1 = os.path.join(os.path.dirname(__file__), "4x8.png")
+        file_path1 = os.path.join(os.path.dirname(upath(__file__)), "4x8.png")
         self.file1 = self.File(open(file_path1, 'rb'))
 
-        file_path2 = os.path.join(os.path.dirname(__file__), "8x4.png")
+        file_path2 = os.path.join(os.path.dirname(upath(__file__)), "8x4.png")
         self.file2 = self.File(open(file_path2, 'rb'))
 
     def tearDown(self):
         """
         Removes temp directory and all its contents.
         """
+        self.file1.close()
+        self.file2.close()
         shutil.rmtree(temp_storage_dir)
 
     def check_dimensions(self, instance, width, height,
@@ -88,7 +95,7 @@ class ImageFieldTestMixin(object):
             self.assertEqual(getattr(instance, height_field_name), height)
 
 
-@skipIf(Image is None, "PIL is required to test ImageField")
+@skipIf(Image is None, "Pillow is required to test ImageField")
 class ImageFieldTests(ImageFieldTestMixin, TestCase):
     """
     Tests for ImageField that don't need to be run with each of the
@@ -129,7 +136,7 @@ class ImageFieldTests(ImageFieldTestMixin, TestCase):
         p = self.PersonModel.objects.get(name="Joan")
         path = p.mugshot.path
         shutil.move(path, path + '.moved')
-        p2 = self.PersonModel.objects.get(name="Joan")
+        self.PersonModel.objects.get(name="Joan")
 
     def test_delete_when_missing(self):
         """
@@ -154,7 +161,7 @@ class ImageFieldTests(ImageFieldTestMixin, TestCase):
         self.assertEqual(p.mugshot.closed, True)
 
         # After asking for the size, the file should still be closed.
-        _ = p.mugshot.size
+        p.mugshot.size
         self.assertEqual(p.mugshot.closed, True)
 
     def test_pickle(self):
@@ -175,7 +182,7 @@ class ImageFieldTests(ImageFieldTestMixin, TestCase):
         self.assertEqual(p.mugshot, loaded_p.mugshot)
 
 
-@skipIf(Image is None, "PIL is required to test ImageField")
+@skipIf(Image is None, "Pillow is required to test ImageField")
 class ImageFieldTwoDimensionsTests(ImageFieldTestMixin, TestCase):
     """
     Tests behavior of an ImageField and its dimensions fields.
@@ -198,7 +205,7 @@ class ImageFieldTwoDimensionsTests(ImageFieldTestMixin, TestCase):
         # TestImageField value will default to being an instance of its
         # attr_class, a  TestImageFieldFile, with name == None, which will
         # cause it to evaluate as False.
-        self.assertEqual(isinstance(p.mugshot, TestImageFieldFile), True)
+        self.assertIsInstance(p.mugshot, TestImageFieldFile)
         self.assertEqual(bool(p.mugshot), False)
 
         # Test setting a fresh created model instance.
@@ -220,7 +227,7 @@ class ImageFieldTwoDimensionsTests(ImageFieldTestMixin, TestCase):
         name (name set to None).
         """
         p = self.PersonModel()
-        self.assertEqual(isinstance(p.mugshot, TestImageFieldFile), True)
+        self.assertIsInstance(p.mugshot, TestImageFieldFile)
         self.assertEqual(bool(p.mugshot), False)
 
     def test_assignment_to_None(self):
@@ -289,7 +296,7 @@ class ImageFieldTwoDimensionsTests(ImageFieldTestMixin, TestCase):
         self.assertEqual(p.mugshot.was_opened, True)
 
 
-@skipIf(Image is None, "PIL is required to test ImageField")
+@skipIf(Image is None, "Pillow is required to test ImageField")
 class ImageFieldNoDimensionsTests(ImageFieldTwoDimensionsTests):
     """
     Tests behavior of an ImageField with no dimension fields.
@@ -298,7 +305,7 @@ class ImageFieldNoDimensionsTests(ImageFieldTwoDimensionsTests):
     PersonModel = Person
 
 
-@skipIf(Image is None, "PIL is required to test ImageField")
+@skipIf(Image is None, "Pillow is required to test ImageField")
 class ImageFieldOneDimensionTests(ImageFieldTwoDimensionsTests):
     """
     Tests behavior of an ImageField with one dimensions field.
@@ -307,7 +314,7 @@ class ImageFieldOneDimensionTests(ImageFieldTwoDimensionsTests):
     PersonModel = PersonWithHeight
 
 
-@skipIf(Image is None, "PIL is required to test ImageField")
+@skipIf(Image is None, "Pillow is required to test ImageField")
 class ImageFieldDimensionsFirstTests(ImageFieldTwoDimensionsTests):
     """
     Tests behavior of an ImageField where the dimensions fields are
@@ -317,7 +324,7 @@ class ImageFieldDimensionsFirstTests(ImageFieldTwoDimensionsTests):
     PersonModel = PersonDimensionsFirst
 
 
-@skipIf(Image is None, "PIL is required to test ImageField")
+@skipIf(Image is None, "Pillow is required to test ImageField")
 class ImageFieldUsingFileTests(ImageFieldTwoDimensionsTests):
     """
     Tests behavior of an ImageField when assigning it a File instance
@@ -328,7 +335,7 @@ class ImageFieldUsingFileTests(ImageFieldTwoDimensionsTests):
     File = File
 
 
-@skipIf(Image is None, "PIL is required to test ImageField")
+@skipIf(Image is None, "Pillow is required to test ImageField")
 class TwoImageFieldTests(ImageFieldTestMixin, TestCase):
     """
     Tests a model with two ImageFields.
@@ -407,7 +414,7 @@ class TwoImageFieldTests(ImageFieldTestMixin, TestCase):
         # was opened.
         self.assertEqual(p.mugshot.was_opened, False)
         self.assertEqual(p.headshot.was_opened, False)
-        self.check_dimensions(p, 4, 8,'mugshot')
+        self.check_dimensions(p, 4, 8, 'mugshot')
         self.check_dimensions(p, 8, 4, 'headshot')
         # After checking dimensions on the image fields, the files will
         # have been opened.
@@ -417,7 +424,7 @@ class TwoImageFieldTests(ImageFieldTestMixin, TestCase):
         # check dimensions again, the file should not have opened.
         p.mugshot.was_opened = False
         p.headshot.was_opened = False
-        self.check_dimensions(p, 4, 8,'mugshot')
+        self.check_dimensions(p, 4, 8, 'mugshot')
         self.check_dimensions(p, 8, 4, 'headshot')
         self.assertEqual(p.mugshot.was_opened, False)
         self.assertEqual(p.headshot.was_opened, False)

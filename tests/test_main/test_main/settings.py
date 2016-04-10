@@ -7,7 +7,7 @@ TEMPLATE_DEBUG = DEBUG
 DATABASES = {
     'default': {
         'ENGINE': 'firebird',
-        'NAME': 'django-test',
+        'NAME': 'django-test-default',
         'USER': 'SYSDBA',
         'PASSWORD': 'masterkey',
         'HOST': '127.0.0.1',
