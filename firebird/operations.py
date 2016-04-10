@@ -1,6 +1,6 @@
 import uuid
 
-from datetime import datetime
+from datetime import datetime, time
 
 from django.conf import settings
 from django.db.backends.base.operations import BaseDatabaseOperations
@@ -8,6 +8,7 @@ from django.db.backends import utils
 from django.utils.functional import cached_property
 from django.utils import six
 from django.utils import timezone
+from django.utils.encoding import force_bytes
 
 
 class DatabaseOperations(BaseDatabaseOperations):
@@ -161,24 +162,16 @@ class DatabaseOperations(BaseDatabaseOperations):
     def no_limit_value(self):
         return None
 
-    def __convert_values(self, value, field):
-        if value is not None and field and field.get_internal_type() == 'DecimalField':
-            value = utils.typecast_decimal(field.format_number(value))
-        elif value in (1, 0) and field and field.get_internal_type() in ('BooleanField', 'NullBooleanField'):
-            value = bool(value)
-        # Force floats to the correct type
-        elif value is not None and field and field.get_internal_type() == 'FloatField':
-            value = float(value)
-        elif value is not None and field and (field.get_internal_type().endswith('IntegerField') or field.get_internal_type() == 'AutoField'):
-            return int(value)
-        return value
-
     def get_db_converters(self, expression):
         converters = super(DatabaseOperations, self).get_db_converters(expression)
         internal_type = expression.output_field.get_internal_type()
-        if internal_type in ['BooleanField', 'NullBooleanField']:
+        if internal_type == 'BinaryField':
+            converters.append(self.convert_binaryfield_value)
+        elif internal_type in ['BooleanField', 'NullBooleanField']:
             converters.append(self.convert_booleanfield_value)
-        if internal_type == 'UUIDField':
+        elif internal_type in ['IPAddressField', 'GenericIPAddressField']:
+            converters.append(self.convert_ipfield_value)
+        elif internal_type == 'UUIDField':
             converters.append(self.convert_uuidfield_value)
         # if internal_type == 'TextField':
         #    converters.append(self.convert_textfield_value)
@@ -192,6 +185,16 @@ class DatabaseOperations(BaseDatabaseOperations):
     def convert_uuidfield_value(self, value, expression, connection, context):
         if value is not None:
             value = uuid.UUID(value)
+        return value
+
+    def convert_ipfield_value(self, value, expression, connection, context):
+        if value is not None:
+            value = value.strip()
+        return value
+
+    def convert_binaryfield_value(self, value, expression, connection, context):
+        if value is not None:
+            value = force_bytes(value)
         return value
 
     def combine_duration_expression(self, connector, sub_expressions):
@@ -391,10 +394,10 @@ class DatabaseOperations(BaseDatabaseOperations):
             else:
                 raise ValueError("Firebird backend does not support timezone-aware datetimes when USE_TZ is False.")
 
+        # Replaces 6 digits microseconds to 4 digits allowed in Firebird
         if isinstance(value, datetime):
             value = str(value)
         if isinstance(value, six.string_types):
-            # Replaces 6 digits microseconds to 4 digits allowed in Firebird
             value = value[:24]
         return six.text_type(value)
 
@@ -406,6 +409,11 @@ class DatabaseOperations(BaseDatabaseOperations):
         if timezone.is_aware(value):
             raise ValueError("Firebird backend does not support timezone-aware times.")
 
+        # Replaces 6 digits microseconds to 4 digits allowed in Firebird
+        if isinstance(value, time):
+            value = str(value)
+        if isinstance(value, six.string_types):
+            value = value[:13]
         return six.text_type(value)
 
 
