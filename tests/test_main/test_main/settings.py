@@ -146,6 +146,7 @@ INSTALLED_APPS = (
     'datatypes',
     'dates',
     'datetimes',
+    'lookup',
 )
 
 # A sample logging configuration. The only tangible logging
