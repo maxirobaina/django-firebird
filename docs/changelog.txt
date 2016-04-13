@@ -1,6 +1,18 @@
 Changelog
 =========
 
+v1.8.0 beta
+-----------
++ First version with django 1.8.x support
++ Implement new UUIDField #54
++ Implement new DurationField #55
++ DatabaseOperations: repleace convert_values by get_db_converters #56
++ DatabaseIntrospection: get_relations implementation change in 1.8 #57
++ Introspection of boolean field type fail #58
++ Create new object with a time field fails if microseconds greater than 6 digit  #60
+
+
+
 v1.7.0
 ------
 + Support for Django v1.7.x
