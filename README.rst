@@ -15,8 +15,15 @@ django-firebird
 Firebird SQL backend for django
 -------------------------------
 
+**Repo Note**:
+The ``master`` branch is an *in development* version of django-firebird. This may be substantially different from the latest
+`release of django-firebird`_
+
+.. _release of django-firebird: https://github.com/maxirobaina/django-firebird/releases
+
+
 This version of django-firebird is working with *fbd* [1], therefore it will work only with firebird 2.x and later.
-The stable version corresponds with django 1.7 and live into stable/1.7.x branch
+The stable version corresponds with django 1.7 and live into ``stable/1.7.x`` branch.
 The current master branch of this repository is being developed under django 1.8.x. For previous Django stable version check
 the branch list of this repository.
 *fbd* is the official stable python-firebird driver, also it has support for python 3.
