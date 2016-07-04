@@ -1,25 +1,30 @@
 import os
 import sys
+import subprocess
 
 from django.db.backends.base.client import BaseDatabaseClient
 
 
 class DatabaseClient(BaseDatabaseClient):
-    executable_name = 'isql'
+    executable_name = None
+
+    def __init__(self, *args, **kwargs):
+        if os.name == 'nt':
+            self.executable_name = 'isql'
+        else:
+            self.executable_name = 'isql-fb'
+        super(DatabaseClient, self).__init__(*args, **kwargs)
 
     def _get_args(self):
         args = [self.executable_name]
-        settings_dict = self.connection.settings_dict
-        if settings_dict['HOST']:
-            args.append(settings_dict['HOST'] + ':' + settings_dict['NAME'])
-        else:
-            args.append(settings_dict['NAME'])
-        if settings_dict['USER']:
-            args += ["-u", settings_dict['USER']]
-        if settings_dict['PASSWORD']:
-            args += ["-p", settings_dict['PASSWORD']]
-        if 'ROLE' in settings_dict:
-            args += ["-r", settings_dict['ROLE']]
+        params = self.connection.get_connection_params()
+        args.append(params['dsn'])
+        if params['user']:
+            args += ["-u", params['user']]
+        if params['password']:
+            args += ["-p", params['password']]
+        if 'role' in params:
+            args += ["-r", params['role']]
         return args
     args = property(_get_args)
 
@@ -27,5 +32,4 @@ class DatabaseClient(BaseDatabaseClient):
         if os.name == 'nt':
             sys.exit(os.system(" ".join(self.args)))
         else:
-            self.executable_name = 'isql-fb'
-            os.execvp(self.executable_name, self.args)
+            subprocess.check_call(self.args)
