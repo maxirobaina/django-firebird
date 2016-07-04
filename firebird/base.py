@@ -117,7 +117,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         self.introspection = DatabaseIntrospection(self)
         self.validation = DatabaseValidation(self)
 
-    ##### Backend-specific methods for creating connections and cursors #####
+    # #### Backend-specific methods for creating connections and cursors #####
 
     def get_connection_params(self):
         """Returns a dict of parameters suitable for get_new_connection."""
@@ -125,8 +125,8 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         if settings_dict['NAME'] == '':
             from django.core.exceptions import ImproperlyConfigured
             raise ImproperlyConfigured(
-                    "settings.DATABASES is improperly configured. "
-                    "Please supply the NAME value.")
+                "settings.DATABASES is improperly configured. "
+                "Please supply the NAME value.")
 
         # The port param is not used by fdb. It must be setting by dsn string
         if settings_dict['PORT']:
@@ -162,7 +162,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         cursor = self.connection.cursor()
         return FirebirdCursorWrapper(cursor, self.encoding)
 
-    ##### Backend-specific transaction management methods #####
+    # #### Backend-specific transaction management methods #####
 
     def _set_autocommit(self, autocommit):
         """
@@ -178,7 +178,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         """
         pass
 
-    ##### Backend-specific wrappers for PEP-249 connection methods #####
+    # #### Backend-specific wrappers for PEP-249 connection methods #####
 
     def _close(self):
         if self.connection is not None:
@@ -187,7 +187,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
                     self.connection.commit()
                 return self.connection.close()
 
-    ##### Connection termination handling #####
+    # #### Connection termination handling #####
 
     def is_usable(self):
         """
