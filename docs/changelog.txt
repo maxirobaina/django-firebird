@@ -1,7 +1,7 @@
 Changelog
 =========
 
-v1.8.0 beta
+v1.8.0
 -----------
 + First version with django 1.8.x support
 + Implement new UUIDField #54
@@ -10,7 +10,13 @@ v1.8.0 beta
 + DatabaseIntrospection: get_relations implementation change in 1.8 #57
 + Introspection of boolean field type fail #58
 + Create new object with a time field fails if microseconds greater than 6 digit  #60
++ django-firebird not working with non-default firebird port #62
++ Client db shell doesn't work on non-default firebird port #63
 
+
+v1.7.1
+------
++ Backported django-firebird not working with non-default firebird port #62
 
 
 v1.7.0
