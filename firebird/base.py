@@ -123,12 +123,13 @@ class DatabaseWrapper(BaseDatabaseWrapper):
                     "settings.DATABASES is improperly configured. "
                     "Please supply the NAME value.")
 
-        conn_params = {'charset': 'UTF8'}
-        conn_params['dsn'] = settings_dict['NAME']
-        if settings_dict['HOST']:
-            conn_params['dsn'] = ('%s:%s') % (settings_dict['HOST'], conn_params['dsn'])
+        # The port param is not used by fdb. It must be setting by dsn string
         if settings_dict['PORT']:
-            conn_params['port'] = settings_dict['PORT']
+            dsn = '%(HOST)s/%(PORT)s:%(NAME)s'
+        else:
+            dsn = '%(HOST)s:%(NAME)s'
+        conn_params = {'charset': 'UTF8'}
+        conn_params['dsn'] = dsn % settings_dict
         if settings_dict['USER']:
             conn_params['user'] = settings_dict['USER']
         if settings_dict['PASSWORD']:

@@ -1,6 +1,11 @@
 Changelog
 =========
 
+v1.7.1
+------
++ Backported django-firebird not working with non-default firebird port #62
+
+
 v1.7.0
 ------
 + Support for Django v1.7.x
