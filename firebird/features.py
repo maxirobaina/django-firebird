@@ -39,6 +39,9 @@ class DatabaseFeatures(BaseDatabaseFeatures):
 
     uppercases_column_names = True
 
+    # Does the __regex lookup support backreferencing and grouping?
+    supports_regex_backreferencing = False
+
     @cached_property
     def supports_transactions(self):
         return True

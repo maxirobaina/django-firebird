@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
 import datetime
@@ -5,6 +6,8 @@ import unittest
 from decimal import Decimal
 
 from django import forms, test
+from django.apps import apps
+from django.apps.registry import Apps
 from django.core import checks, validators
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, connection, models, transaction
@@ -17,7 +20,9 @@ from django.db.models.fields import (
     TimeField, URLField,
 )
 from django.db.models.fields.files import FileField, ImageField
-from django.utils import six
+from django.test.utils import requires_tz_support
+from django.utils import six, timezone
+from django.utils.encoding import force_str
 from django.utils.functional import lazy
 
 from .models import (
@@ -25,7 +30,8 @@ from .models import (
     Document, FksToBooleans, FkToChar, FloatModel, Foo, GenericIPAddress,
     IntegerModel, NullBooleanModel, PositiveIntegerModel,
     PositiveSmallIntegerModel, Post, PrimaryKeyCharModel, RenamedField,
-    SmallIntegerModel, VerboseNameField, Whiz, WhizIter, WhizIterEmpty,
+    SmallIntegerModel, UnicodeSlugField, VerboseNameField, Whiz, WhizIter,
+    WhizIterEmpty,
 )
 
 
@@ -47,7 +53,6 @@ class BasicFieldTests(test.TestCase):
         """
         Regression test for #13071: NullBooleanField should not throw
         a validation error when given a value of None.
-
         """
         nullboolean = NullBooleanModel(nbfield=None)
         try:
@@ -75,7 +80,7 @@ class BasicFieldTests(test.TestCase):
 
     def test_field_verbose_name(self):
         m = VerboseNameField
-        for i in range(1, 25):
+        for i in range(1, 24):
             self.assertEqual(m._meta.get_field('field%d' % i).verbose_name,
                              'verbose field%d' % i)
 
@@ -94,8 +99,13 @@ class BasicFieldTests(test.TestCase):
         self.assertTrue(instance.id)
         # Set field to object on saved instance
         instance.size = instance
+        msg = (
+            "Tried to update field model_fields.FloatModel.size with a model "
+            "instance, <FloatModel: FloatModel object>. Use a value "
+            "compatible with FloatField."
+        )
         with transaction.atomic():
-            with self.assertRaises(TypeError):
+            with self.assertRaisesMessage(TypeError, msg):
                 instance.save()
         # Try setting field to object on retrieved object
         obj = FloatModel.objects.get(pk=instance.id)
@@ -111,7 +121,6 @@ class BasicFieldTests(test.TestCase):
         self.assertIsInstance(field.formfield(choices_form_class=klass), klass)
 
     def test_field_str(self):
-        from django.utils.encoding import force_str
         f = Foo._meta.get_field('a')
         self.assertEqual(force_str(f), "model_fields.Foo.a")
 
@@ -162,6 +171,24 @@ class DecimalFieldTests(test.TestCase):
         # This should not crash. That counts as a win for our purposes.
         Foo.objects.filter(d__gte=100000000000)
 
+    def test_max_digits_validation(self):
+        field = models.DecimalField(max_digits=2)
+        expected_message = validators.DecimalValidator.messages['max_digits'] % {'max': 2}
+        with self.assertRaisesMessage(ValidationError, expected_message):
+            field.clean(100, None)
+
+    def test_max_decimal_places_validation(self):
+        field = models.DecimalField(decimal_places=1)
+        expected_message = validators.DecimalValidator.messages['max_decimal_places'] % {'max': 1}
+        with self.assertRaisesMessage(ValidationError, expected_message):
+            field.clean(Decimal('0.99'), None)
+
+    def test_max_whole_digits_validation(self):
+        field = models.DecimalField(max_digits=3, decimal_places=1)
+        expected_message = validators.DecimalValidator.messages['max_whole_digits'] % {'max': 2}
+        with self.assertRaisesMessage(ValidationError, expected_message):
+            field.clean(Decimal('999'), None)
+
 
 class ForeignKeyTests(test.TestCase):
     def test_callable_default(self):
@@ -183,7 +210,7 @@ class ForeignKeyTests(test.TestCase):
 
     def test_warning_when_unique_true_on_fk(self):
         class FKUniqueTrue(models.Model):
-            fk_field = models.ForeignKey(Foo, unique=True)
+            fk_field = models.ForeignKey(Foo, models.CASCADE, unique=True)
 
         model = FKUniqueTrue()
         expected_warnings = [
@@ -198,8 +225,120 @@ class ForeignKeyTests(test.TestCase):
         self.assertEqual(warnings, expected_warnings)
 
     def test_related_name_converted_to_text(self):
-        rel_name = Bar._meta.get_field('a').rel.related_name
+        rel_name = Bar._meta.get_field('a').remote_field.related_name
         self.assertIsInstance(rel_name, six.text_type)
+
+    def test_abstract_model_pending_operations(self):
+        """
+        Foreign key fields declared on abstract models should not add lazy relations to
+        resolve relationship declared as string. refs #24215
+        """
+        pending_ops_before = list(apps._pending_operations.items())
+
+        class AbstractForeignKeyModel(models.Model):
+            fk = models.ForeignKey('missing.FK', models.CASCADE)
+
+            class Meta:
+                abstract = True
+
+        self.assertIs(AbstractForeignKeyModel._meta.apps, apps)
+        self.assertEqual(
+            pending_ops_before,
+            list(apps._pending_operations.items()),
+            "Pending lookup added for a foreign key on an abstract model"
+        )
+
+    def test_abstract_model_app_relative_foreign_key(self):
+        test_apps = Apps(['model_fields', 'model_fields.tests'])
+
+        class AbstractReferent(models.Model):
+            reference = models.ForeignKey('Refered', on_delete=models.CASCADE)
+
+            class Meta:
+                apps = test_apps
+                app_label = 'model_fields'
+                abstract = True
+
+        def assert_app_model_resolved(label):
+            class Refered(models.Model):
+                class Meta:
+                    apps = test_apps
+                    app_label = label
+
+            class ConcreteReferent(AbstractReferent):
+                class Meta:
+                    apps = test_apps
+                    app_label = label
+
+            self.assertEqual(ConcreteReferent._meta.get_field('reference').related_model, Refered)
+
+        assert_app_model_resolved('model_fields')
+        assert_app_model_resolved('tests')
+
+
+class ManyToManyFieldTests(test.SimpleTestCase):
+    def test_abstract_model_pending_operations(self):
+        """
+        Many-to-many fields declared on abstract models should not add lazy relations to
+        resolve relationship declared as string. refs #24215
+        """
+        pending_ops_before = list(apps._pending_operations.items())
+
+        class AbstractManyToManyModel(models.Model):
+            fk = models.ForeignKey('missing.FK', models.CASCADE)
+
+            class Meta:
+                abstract = True
+
+        self.assertIs(AbstractManyToManyModel._meta.apps, apps)
+        self.assertEqual(
+            pending_ops_before,
+            list(apps._pending_operations.items()),
+            "Pending lookup added for a many-to-many field on an abstract model"
+        )
+
+    def test_abstract_model_app_relative_foreign_key(self):
+        test_apps = Apps(['model_fields', 'model_fields.tests'])
+
+        class AbstractReferent(models.Model):
+            reference = models.ManyToManyField('Refered', through='Through')
+
+            class Meta:
+                apps = test_apps
+                app_label = 'model_fields'
+                abstract = True
+
+        def assert_app_model_resolved(label):
+            class Refered(models.Model):
+                class Meta:
+                    apps = test_apps
+                    app_label = label
+
+            class Through(models.Model):
+                refered = models.ForeignKey('Refered', on_delete=models.CASCADE)
+                referent = models.ForeignKey('ConcreteReferent', on_delete=models.CASCADE)
+
+                class Meta:
+                    apps = test_apps
+                    app_label = label
+
+            class ConcreteReferent(AbstractReferent):
+                class Meta:
+                    apps = test_apps
+                    app_label = label
+
+            self.assertEqual(ConcreteReferent._meta.get_field('reference').related_model, Refered)
+            self.assertEqual(ConcreteReferent.reference.through, Through)
+
+        assert_app_model_resolved('model_fields')
+        assert_app_model_resolved('tests')
+
+
+class TextFieldTests(test.TestCase):
+    def test_to_python(self):
+        """TextField.to_python() should return a string"""
+        f = models.TextField()
+        self.assertEqual(f.to_python(1), '1')
 
 
 class DateTimeFieldTests(test.TestCase):
@@ -230,6 +369,48 @@ class DateTimeFieldTests(test.TestCase):
         self.assertEqual(obj.d, dat)
         self.assertEqual(obj.dt, datetim)
         self.assertEqual(obj.t, tim)
+
+    @test.override_settings(USE_TZ=False)
+    def test_lookup_date_without_use_tz(self):
+        d = datetime.date(2014, 3, 12)
+        dt1 = datetime.datetime(2014, 3, 12, 21, 22, 23, 240000)
+        dt2 = datetime.datetime(2014, 3, 11, 21, 22, 23, 240000)
+        t = datetime.time(21, 22, 23, 240000)
+        m = DateTimeModel.objects.create(d=d, dt=dt1, t=t)
+        # Other model with different datetime.
+        DateTimeModel.objects.create(d=d, dt=dt2, t=t)
+        self.assertEqual(m, DateTimeModel.objects.get(dt__date=d))
+
+    @requires_tz_support
+    @test.skipUnlessDBFeature('has_zoneinfo_database')
+    @test.override_settings(USE_TZ=True, TIME_ZONE='America/Vancouver')
+    def test_lookup_date_with_use_tz(self):
+        d = datetime.date(2014, 3, 12)
+        # The following is equivalent to UTC 2014-03-12 18:34:23.24000.
+        dt1 = datetime.datetime(
+            2014, 3, 12, 10, 22, 23, 240000,
+            tzinfo=timezone.get_current_timezone()
+        )
+        # The following is equivalent to UTC 2014-03-13 05:34:23.24000.
+        dt2 = datetime.datetime(
+            2014, 3, 12, 21, 22, 23, 240000,
+            tzinfo=timezone.get_current_timezone()
+        )
+        t = datetime.time(21, 22, 23, 240000)
+        m1 = DateTimeModel.objects.create(d=d, dt=dt1, t=t)
+        m2 = DateTimeModel.objects.create(d=d, dt=dt2, t=t)
+        # In Vancouver, we expect both results.
+        self.assertQuerysetEqual(
+            DateTimeModel.objects.filter(dt__date=d),
+            [repr(m1), repr(m2)],
+            ordered=False
+        )
+        with self.settings(TIME_ZONE='UTC'):
+            # But in UTC, the __date only matches one of them.
+            self.assertQuerysetEqual(
+                DateTimeModel.objects.filter(dt__date=d),
+                [repr(m1)]
+            )
 
 
 class BooleanFieldTests(test.TestCase):
@@ -382,11 +563,11 @@ class BooleanFieldTests(test.TestCase):
         nb.save()           # no error
 
 
-class ChoicesTests(test.TestCase):
+class ChoicesTests(test.SimpleTestCase):
     def test_choices_and_field_display(self):
         """
-        Check that get_choices and get_flatchoices interact with
-        get_FIELD_display to return the expected values (#7913).
+        Check that get_choices() interacts with get_FIELD_display() to return
+        the expected values (#7913).
         """
         self.assertEqual(Whiz(c=1).get_c_display(), 'First')    # A nested value
         self.assertEqual(Whiz(c=0).get_c_display(), 'Other')    # A top level value
@@ -412,13 +593,6 @@ class ChoicesTests(test.TestCase):
         self.assertEqual(WhizIterEmpty(c=None).c, None)    # Blank value
         self.assertEqual(WhizIterEmpty(c='').c, '')        # Empty value
 
-    def test_charfield_get_choices_with_blank_iterator(self):
-        """
-        Check that get_choices works with an empty Iterator
-        """
-        f = models.CharField(choices=(x for x in []))
-        self.assertEqual(f.get_choices(include_blank=True), [('', '---------')])
-
 
 class SlugFieldTests(test.TestCase):
     def test_slugfield_max_length(self):
@@ -429,8 +603,16 @@ class SlugFieldTests(test.TestCase):
         bs = BigS.objects.get(pk=bs.pk)
         self.assertEqual(bs.s, 'slug' * 50)
 
+    def test_slugfield_unicode_max_length(self):
+        """
+        SlugField with allow_unicode=True should honor max_length.
+        """
+        bs = UnicodeSlugField.objects.create(s='你好你好' * 50)
+        bs = UnicodeSlugField.objects.get(pk=bs.pk)
+        self.assertEqual(bs.s, '你好你好' * 50)
 
-class ValidationTest(test.TestCase):
+
+class ValidationTest(test.SimpleTestCase):
     def test_charfield_raises_error_on_empty_string(self):
         f = models.CharField()
         self.assertRaises(ValidationError, f.clean, "", None)
@@ -518,6 +700,9 @@ class IntegerFieldTests(test.TestCase):
         can be saved and retrieved without corruption.
         """
         min_value, max_value = self.documented_range
+
+        print "*" * 80
+        print self.documented_range
 
         instance = self.model(value=min_value)
         instance.full_clean()
@@ -621,7 +806,6 @@ class TypeCoercionTests(test.TestCase):
     Test that database lookups can accept the wrong types and convert
     them with no error: especially on Postgres 8.3+ which does not do
     automatic casting at the DB level. See #10015.
-
     """
     def test_lookup_integer_in_charfield(self):
         self.assertEqual(Post.objects.filter(title=9).count(), 0)
@@ -635,7 +819,6 @@ class FileFieldTests(unittest.TestCase):
         """
         Test that FileField.save_form_data will clear its instance attribute
         value if passed False.
-
         """
         d = Document(myfile='something.txt')
         self.assertEqual(d.myfile, 'something.txt')
@@ -647,7 +830,6 @@ class FileFieldTests(unittest.TestCase):
         """
         Test that FileField.save_form_data considers None to mean "no change"
         rather than "clear".
-
         """
         d = Document(myfile='something.txt')
         self.assertEqual(d.myfile, 'something.txt')
@@ -659,7 +841,6 @@ class FileFieldTests(unittest.TestCase):
         """
         Test that FileField.save_form_data, if passed a truthy value, updates
         its instance attribute.
-
         """
         d = Document(myfile='something.txt')
         self.assertEqual(d.myfile, 'something.txt')
@@ -683,7 +864,7 @@ class BinaryFieldTests(test.TestCase):
     binary_data = b'\x00\x46\xFE'
 
     def test_set_and_retrieve(self):
-        data_set = (self.binary_data, str(six.memoryview(self.binary_data)))
+        data_set = (self.binary_data, six.memoryview(self.binary_data))
         for bdata in data_set:
             dm = DataModel(data=bdata)
             dm.save()
@@ -722,13 +903,21 @@ class GenericIPAddressFieldTests(test.TestCase):
         o = GenericIPAddress.objects.get()
         self.assertIsNone(o.ip)
 
+    def test_blank_string_saved_as_null(self):
+        o = GenericIPAddress.objects.create(ip='')
+        o.refresh_from_db()
+        self.assertIsNone(o.ip)
+        GenericIPAddress.objects.update(ip='')
+        o.refresh_from_db()
+        self.assertIsNone(o.ip)
+
     def test_save_load(self):
         instance = GenericIPAddress.objects.create(ip='::1')
         loaded = GenericIPAddress.objects.get()
         self.assertEqual(loaded.ip, instance.ip)
 
 
-class PromiseTest(test.TestCase):
+class PromiseTest(test.SimpleTestCase):
     def test_AutoField(self):
         lazy_func = lazy(lambda: 1, int)
         self.assertIsInstance(
@@ -846,22 +1035,6 @@ class PromiseTest(test.TestCase):
         self.assertIsInstance(
             IPAddressField().get_prep_value(lazy_func()),
             six.text_type)
-
-    def test_IPAddressField_deprecated(self):
-        class IPAddressModel(models.Model):
-            ip = IPAddressField()
-
-        model = IPAddressModel()
-        self.assertEqual(
-            model.check(),
-            [checks.Warning(
-                'IPAddressField has been deprecated. Support for it '
-                '(except in historical migrations) will be removed in Django 1.9.',
-                hint='Use GenericIPAddressField instead.',
-                obj=IPAddressModel._meta.get_field('ip'),
-                id='fields.W900',
-            )],
-        )
 
     def test_GenericIPAddressField(self):
         lazy_func = lazy(lambda: '127.0.0.1', six.text_type)

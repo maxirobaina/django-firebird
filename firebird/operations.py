@@ -99,6 +99,10 @@ class DatabaseOperations(BaseDatabaseOperations):
             sql = "EXTRACT(year FROM %s)||'-'||EXTRACT(month FROM %s)||'-'||EXTRACT(day FROM %s)||' 00:00:00'" % (field_name, field_name, field_name)
         return "CAST(%s AS TIMESTAMP)" % sql
 
+    def datetime_cast_date_sql(self, field_name, tzname):
+        sql = 'CAST(%s AS DATE)' % field_name
+        return sql, []
+
     def datetime_extract_sql(self, lookup_type, field_name, tzname):
         """
         Given a lookup_type of 'year', 'month', 'day', 'hour', 'minute' or
@@ -226,15 +230,15 @@ class DatabaseOperations(BaseDatabaseOperations):
             value = timedelta.microseconds
         return 'DATEADD(%s %s TO %s)' % (value * sign, unit, sql)
 
-    def year_lookup_bounds(self, value):
-        first = '%s-01-01 00:00:00'
-        second = '%s-12-31 23:59:59.9999'
-        return [first % value, second % value]
+    def year_lookup_bounds_for_datetime_field(self, value):
+        first = '%s-01-01 00:00:00' % value
+        second = '%s-12-31 23:59:59.9999' % value
+        return [first, second]
 
     def year_lookup_bounds_for_date_field(self, value):
-        first = '%s-01-01'
-        second = '%s-12-31'
-        return [first % value, second % value]
+        first = '%s-01-01' % value
+        second = '%s-12-31' % value
+        return [first, second]
 
     def quote_name(self, name):
         if not name.startswith('"') and not name.endswith('"'):
@@ -391,7 +395,7 @@ class DatabaseOperations(BaseDatabaseOperations):
     def get_sequence_trigger_name(self, table_name):
         return get_autoinc_trigger_name(self, table_name)
 
-    def value_to_db_datetime(self, value):
+    def adapt_datetimefield_value(self, value):
         """
         Transform a datetime value to an object compatible with what is expected
         by the backend driver for datetime columns.
@@ -413,7 +417,7 @@ class DatabaseOperations(BaseDatabaseOperations):
             value = value[:24]
         return six.text_type(value)
 
-    def value_to_db_time(self, value):
+    def adapt_timefield_value(self, value):
         if value is None:
             return None
 

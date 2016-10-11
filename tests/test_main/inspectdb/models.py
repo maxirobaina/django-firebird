@@ -6,20 +6,20 @@ from django.db import models
 
 class People(models.Model):
     name = models.CharField(max_length=255)
-    parent = models.ForeignKey('self')
+    parent = models.ForeignKey('self', models.CASCADE)
 
 
 class Message(models.Model):
-    from_field = models.ForeignKey(People, db_column='from_id')
+    from_field = models.ForeignKey(People, models.CASCADE, db_column='from_id')
 
 
 class PeopleData(models.Model):
-    people_pk = models.ForeignKey(People, primary_key=True)
+    people_pk = models.ForeignKey(People, models.CASCADE, primary_key=True)
     ssn = models.CharField(max_length=11)
 
 
 class PeopleMoreData(models.Model):
-    people_unique = models.ForeignKey(People, unique=True)
+    people_unique = models.ForeignKey(People, models.CASCADE, unique=True)
     license = models.CharField(max_length=255)
 
 
@@ -59,7 +59,6 @@ class ColumnTypes(models.Model):
     file_path_field = models.FilePathField()
     float_field = models.FloatField()
     int_field = models.IntegerField()
-    ip_address_field = models.IPAddressField()
     gen_ip_adress_field = models.GenericIPAddressField(protocol="ipv4")
     pos_int_field = models.PositiveIntegerField()
     pos_small_int_field = models.PositiveSmallIntegerField()
