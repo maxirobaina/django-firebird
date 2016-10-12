@@ -1,12 +1,10 @@
 import datetime
-import operator
 
 from django.utils import six
 from django.utils.encoding import force_str
 from django.db.models.fields import AutoField
-from django.db.models.fields.related import ManyToManyField
 from django.db.backends.base.schema import BaseDatabaseSchemaEditor
-from django.db.backends.base.schema import _related_non_m2m_objects as _related_objects
+from django.db.backends.base.schema import _related_non_m2m_objects
 
 
 class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
@@ -48,9 +46,8 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         table instead (for M2M fields)
         """
         # Special-case implicit M2M tables
-        if ((isinstance(field, ManyToManyField) or field.get_internal_type() == 'ManyToManyField') and
-                field.rel.through._meta.auto_created):
-            return self.create_model(field.rel.through)
+        if field.many_to_many and field.remote_field.through._meta.auto_created:
+            return self.create_model(field.remote_field.through)
         # Get the column's definition
         definition, params = self.column_sql(model, field, include_default=True)
         # It might not actually have a column behind it
@@ -84,7 +81,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         if field.db_index and not field.unique:
             self.deferred_sql.append(self._create_index_sql(model, [field]))
         # Add any FK constraints later
-        if field.rel and self.connection.features.supports_foreign_keys and field.db_constraint:
+        if field.remote_field and self.connection.features.supports_foreign_keys and field.db_constraint:
             self.deferred_sql.append(self._create_fk_sql(model, field, "_fk_%(to_table)s_%(to_column)s"))
         # Reset connection if required
         if self.connection.features.connection_persists_old_columns:
@@ -101,12 +98,13 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
 
         super(DatabaseSchemaEditor, self).remove_field(model, field)
 
-    def _alter_field(self, model, old_field, new_field, old_type, new_type, old_db_params, new_db_params, strict=False):
+    def _alter_field(self, model, old_field, new_field, old_type, new_type,
+                     old_db_params, new_db_params, strict=False):
         """Actually perform a "physical" (non-ManyToMany) field update."""
 
         # Drop any FK constraints, we'll remake them later
         fks_dropped = set()
-        if old_field.rel and old_field.db_constraint:
+        if old_field.remote_field and old_field.db_constraint:
             fk_names = self._constraint_names(model, [old_field.column], foreign_key=True)
             if strict and len(fk_names) != 1:
                 raise ValueError("Found wrong number (%s) of foreign key constraints for %s.%s" % (
@@ -132,12 +130,14 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         # Drop incoming FK constraints if we're a primary key and things are going
         # to change.
         if old_field.primary_key and new_field.primary_key and old_type != new_type:
-            for _old_rel, new_rel in _related_objects(old_field, new_field):
+            # '_meta.related_field' also contains M2M reverse fields, these
+            # will be filtered out
+            for _old_rel, new_rel in _related_non_m2m_objects(old_field, new_field):
                 rel_fk_names = self._constraint_names(
-                    new_rel.model, [new_rel.field.column], foreign_key=True
+                    new_rel.related_model, [new_rel.field.column], foreign_key=True
                 )
                 for fk_name in rel_fk_names:
-                    self.execute(self._delete_constraint_sql(self.sql_delete_fk, new_rel.model, fk_name))
+                    self.execute(self._delete_constraint_sql(self.sql_delete_fk, new_rel.related_model, fk_name))
         # Removed an index? (no strict check, as multiple indexes are possible)
         if (old_field.db_index and not new_field.db_index and
                 not old_field.unique and not
@@ -227,7 +227,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             # Combine actions together if we can (e.g. postgres)
             if self.connection.features.supports_combined_alters and actions:
                 sql, params = tuple(zip(*actions))
-                actions = [(", ".join(sql), reduce(operator.add, params))]
+                actions = [(", ".join(sql), sum(params, []))]
             # Apply those actions
             for sql, params in actions:
                 self.execute(
@@ -261,7 +261,9 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             for sql, params in post_actions:
                 self.execute(sql, params)
         # Added a unique?
-        if not old_field.unique and new_field.unique:
+        if (not old_field.unique and new_field.unique) or (
+            old_field.primary_key and not new_field.primary_key and new_field.unique
+        ):
             self.execute(self._create_unique_sql(model, [new_field.column]))
         # Added an index?
         if (not old_field.db_index and new_field.db_index and
@@ -272,7 +274,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         # referring to us.
         rels_to_update = []
         if old_field.primary_key and new_field.primary_key and old_type != new_type:
-            rels_to_update.extend(_related_objects(old_field, new_field))
+            rels_to_update.extend(_related_non_m2m_objects(old_field, new_field))
         # Changed to become primary key?
         # Note that we don't detect unsetting of a PK, as we assume another field
         # will always come along and replace it.
@@ -295,17 +297,17 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
                 }
             )
             # Update all referencing columns
-            rels_to_update.extend(_related_objects(old_field, new_field))
+            rels_to_update.extend(_related_non_m2m_objects(old_field, new_field))
         # Handle our type alters on the other end of rels from the PK stuff above
         for old_rel, new_rel in rels_to_update:
             rel_db_params = new_rel.field.db_parameters(connection=self.connection)
             rel_type = rel_db_params['type']
             fragment, other_actions = self._alter_column_type_sql(
-                new_rel.model._meta.db_table, old_rel.field, new_rel.field, rel_type
+                new_rel.related_model._meta.db_table, old_rel.field, new_rel.field, rel_type
             )
             self.execute(
                 self.sql_alter_column % {
-                    "table": self.quote_name(new_rel.model._meta.db_table),
+                    "table": self.quote_name(new_rel.related_model._meta.db_table),
                     "changes": fragment[0],
                 },
                 fragment[1],
@@ -313,14 +315,15 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             for sql, params in other_actions:
                 self.execute(sql, params)
         # Does it have a foreign key?
-        if (new_field.rel and
-                (fks_dropped or not old_field.rel or not old_field.db_constraint) and
+        if (new_field.remote_field and
+                (fks_dropped or not old_field.remote_field or not old_field.db_constraint) and
                 new_field.db_constraint):
             self.execute(self._create_fk_sql(model, new_field, "_fk_%(to_table)s_%(to_column)s"))
         # Rebuild FKs that pointed to us if we previously had to drop them
         if old_field.primary_key and new_field.primary_key and old_type != new_type:
-            for rel in new_field.model._meta.get_all_related_objects():
-                self.execute(self._create_fk_sql(rel.model, rel.field, "_fk"))
+            for rel in new_field.model._meta.related_objects:
+                if not rel.many_to_many:
+                    self.execute(self._create_fk_sql(rel.related_model, rel.field, "_fk"))
         # Does it have check constraints we need to add?
         if old_db_params['check'] != new_db_params['check'] and new_db_params['check']:
             self.execute(

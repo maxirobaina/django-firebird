@@ -1,6 +1,11 @@
+from collections import namedtuple
+
 from django.db.backends.base.introspection import (
     BaseDatabaseIntrospection, FieldInfo, TableInfo,
 )
+
+
+FieldInfo = namedtuple('FieldInfo', FieldInfo._fields + ('default',))
 
 
 class DatabaseIntrospection(BaseDatabaseIntrospection):
@@ -61,11 +66,13 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
                   when (f.rdb$field_type = 261) then
                     260 + f.rdb$field_sub_type
                   else
-                    f.rdb$field_type end
+                    f.rdb$field_type
+                end as type_code
               , f.rdb$field_length
               , f.rdb$field_precision
               , f.rdb$field_scale * -1
               , rf.rdb$null_flag
+              , rf.rdb$default_source
             from
               rdb$relation_fields rf join rdb$fields f on (rf.rdb$field_source = f.rdb$field_name)
             where
@@ -73,10 +80,10 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
             order by
               rf.rdb$field_position
             """ % (tbl_name,))
-        # return [(r[0].strip().lower(), r[1], r[2], r[2] or 0, r[3], r[4], not (r[5] == 1)) for r in cursor.fetchall()]
         items = []
         for r in cursor.fetchall():
-            items.append(FieldInfo(r[0], r[1], r[2], r[2] or 0, r[3], r[4], not (r[5] == 1)))
+            # name type_code display_size internal_size precision scale null_ok
+            items.append(FieldInfo(r[0], r[1], r[2], r[2] or 0, r[3], r[4], not (r[5] == 1), r[6]))
         return items
 
     def _name_to_index(self, cursor, table_name):
