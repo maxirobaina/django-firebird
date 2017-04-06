@@ -162,6 +162,20 @@ class DecimalFieldTests(test.TestCase):
         # This should not crash. That counts as a win for our purposes.
         Foo.objects.filter(d__gte=100000000000)
 
+    def test_field_type_repr(self):
+        """
+        Regression bug django-firebird #69
+
+        d = models.DecimalField(max_digits=5, decimal_places=3)
+        """
+        Foo.objects.create(id=1, a='abc', d=Decimal("12.34"))
+        foo = Foo.objects.get(id=1)
+        self.assertEqual(repr(foo.d), repr(Decimal("12.340")))
+
+        Foo.objects.create(id=2, a='abc', d=19)
+        foo = Foo.objects.get(id=2)
+        self.assertEqual(repr(foo.d), repr(Decimal("19.000")))
+
 
 class ForeignKeyTests(test.TestCase):
     def test_callable_default(self):
