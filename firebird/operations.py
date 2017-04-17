@@ -185,22 +185,28 @@ class DatabaseOperations(BaseDatabaseOperations):
             converters.append(self.convert_binaryfield_value)
         elif internal_type in ['BooleanField', 'NullBooleanField']:
             converters.append(self.convert_booleanfield_value)
+        elif internal_type == 'DecimalField':
+            converters.append(self.convert_decimalfield_value)
         elif internal_type in ['IPAddressField', 'GenericIPAddressField']:
             converters.append(self.convert_ipfield_value)
         elif internal_type == 'UUIDField':
             converters.append(self.convert_uuidfield_value)
-        # if internal_type == 'TextField':
-        #    converters.append(self.convert_textfield_value)
         return converters
+
+    def convert_binaryfield_value(self, value, expression, connection, context):
+        if value is not None:
+            value = force_bytes(value)
+        return value
 
     def convert_booleanfield_value(self, value, expression, connection, context):
         if value in (0, 1):
             value = bool(value)
         return value
 
-    def convert_uuidfield_value(self, value, expression, connection, context):
-        if value is not None:
-            value = uuid.UUID(value)
+    def convert_decimalfield_value(self, value, expression, connection, context):
+        field = expression.field
+        val = utils.format_number(value, field.max_digits, field.decimal_places)
+        value = utils.typecast_decimal(val)
         return value
 
     def convert_ipfield_value(self, value, expression, connection, context):
@@ -208,9 +214,9 @@ class DatabaseOperations(BaseDatabaseOperations):
             value = value.strip()
         return value
 
-    def convert_binaryfield_value(self, value, expression, connection, context):
+    def convert_uuidfield_value(self, value, expression, connection, context):
         if value is not None:
-            value = force_bytes(value)
+            value = uuid.UUID(value)
         return value
 
     def combine_duration_expression(self, connector, sub_expressions):
