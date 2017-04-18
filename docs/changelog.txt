@@ -1,6 +1,11 @@
 Changelog
 =========
 
+v1.8.1
+-----------
++ DecimalField value is not converted correctly #69
+
+
 v1.8.0
 -----------
 + First version with django 1.8.x support

@@ -2,11 +2,12 @@
 
 from datetime import datetime, timedelta
 
-from django.test import TestCase
-from django.db import connection
+from django.test import TestCase, TransactionTestCase
+from django.db import connection, DatabaseError
 from django.db.models import F
+from django.db.models.fields.related import ForeignKey
 
-from .models import BigS, FieldsTest
+from .models import BigS, FieldsTest, Foo, Bar
 
 
 class FirebirdTest(TestCase):
@@ -77,14 +78,43 @@ class DatabaseOperationsTest(TestCase):
         self.assertEqual(sql, value)
 
 
+class DatabaseSchemaTests(TransactionTestCase):
+    def test_no_index_for_foreignkey(self):
+        """
+        FirebirdSQL already creates indexes automatically for foreign keys. (#70).
+        """
+        index_sql = connection.schema_editor()._model_indexes_sql(Bar)
+        self.assertEqual(index_sql, [])
+
+    def test_fk_index_creation(self):
+        new_field = ForeignKey(Foo)
+        new_field.set_attributes_from_name(None)
+        with connection.schema_editor() as editor:
+            editor.add_field(
+                Bar,
+                new_field
+            )
+            # Just return indexes others that not automaically created by Fk
+            indexes = editor._get_field_indexes(Bar, new_field)
+        self.assertEqual(indexes, [])
+
+    def test_fk_remove_issue70(self):
+        with connection.schema_editor() as editor:
+            editor.remove_field(
+                Bar,
+                Bar._meta.get_field_by_name("a")[0]
+            )
+        self.assertRaises(DatabaseError)
+
+
 class SlugFieldTests(TestCase):
     def test_slugfield_max_length(self):
         """
         Make sure SlugField honors max_length (#9706)
         """
-        bs = BigS.objects.create(s='slug'*50)
+        bs = BigS.objects.create(s='slug' * 50)
         bs = BigS.objects.get(pk=bs.pk)
-        self.assertEqual(bs.s, 'slug'*50)
+        self.assertEqual(bs.s, 'slug' * 50)
 
 
 class DateFieldTests(TestCase):
