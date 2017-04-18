@@ -102,7 +102,7 @@ class DatabaseSchemaTests(TransactionTestCase):
         with connection.schema_editor() as editor:
             editor.remove_field(
                 Bar,
-                Bar._meta.get_field_by_name("a")[0]
+                Bar._meta.get_field("a")
             )
         self.assertRaises(DatabaseError)
 

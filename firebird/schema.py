@@ -415,15 +415,4 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         Executes the given SQL statement, with optional parameters.
         """
         # print("schema:", sql)
-        # Log the command we're running, then run it
-        logger.debug("%s; (params %r)" % (sql, params))
-        if self.collect_sql:
-            ending = "" if sql.endswith(";") else ";"
-            if params is not None:
-                self.collected_sql.append((sql % tuple(map(self.quote_value, params))) + ending)
-            else:
-                self.collected_sql.append(sql + ending)
-        else:
-            with self.connection.cursor() as cursor:
-                cursor.execute(sql, params)
-            # self.connection.commit()
+        super(DatabaseSchemaEditor, self).execute(sql, params)
