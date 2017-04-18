@@ -7,6 +7,10 @@ from django.db.models.fields import AutoField
 from django.db.models.fields.related import ManyToManyField
 from django.db.backends.base.schema import BaseDatabaseSchemaEditor
 from django.db.backends.base.schema import _related_non_m2m_objects as _related_objects
+from django.utils.log import getLogger
+
+
+logger = getLogger('django.db.backends.schema')
 
 
 class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
@@ -81,14 +85,20 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
                 }
                 self.execute(sql)
         # Add an index, if required
-        if field.db_index and not field.unique:
-            self.deferred_sql.append(self._create_index_sql(model, [field]))
+        if field.db_index and not field.unique and field.get_internal_type() != "ForeignKey":
+            index_sql = self._create_index_sql(model, [field])
+            self.deferred_sql.append(index_sql)
         # Add any FK constraints later
         if field.rel and self.connection.features.supports_foreign_keys and field.db_constraint:
             self.deferred_sql.append(self._create_fk_sql(model, field, "_fk_%(to_table)s_%(to_column)s"))
         # Reset connection if required
         if self.connection.features.connection_persists_old_columns:
             self.connection.close()
+
+    def _get_field_indexes(self, model, field):
+        with self.connection.cursor() as cursor:
+            indexes = self.connection.introspection._get_field_indexes(cursor, model._meta.db_table, field.column)
+        return indexes
 
     def remove_field(self, model, field):
         # If remove a AutoField, we need remove all related stuff
@@ -98,6 +108,11 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             self.execute('DROP TRIGGER %s' % trg_name)
             seq_name = self.connection.ops.get_sequence_name(tbl)
             self.execute('DROP SEQUENCE %s' % seq_name)
+
+        # If 'field' is a ForeingKey and It has defined extra indexes, delete that indexes (Github issue #70)
+        for index_name in self._get_field_indexes(model, field):
+            sql = self._delete_constraint_sql(self.sql_delete_index, model, index_name)
+            self.execute(sql)
 
         super(DatabaseSchemaEditor, self).remove_field(model, field)
 
@@ -345,6 +360,14 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         if self.connection.features.connection_persists_old_columns:
             self.connection.close()
 
+    def _model_indexes_sql(self, model):
+        for field in model._meta.local_fields:
+            if field.db_index and not field.unique and field.get_internal_type() == "ForeignKey":
+                # Temporary setting db_index to False (in memory) to disable
+                # index creation for FKs (index automatically created by FirebirdSQL)
+                field.db_index = False
+        return super(DatabaseSchemaEditor, self)._model_indexes_sql(model)
+
     def prepare_default(self, value):
         if isinstance(value, bool):
             return "1" if value else "0"
@@ -372,7 +395,8 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         if sql:
             try:
                 self.execute(sql)
-            except:
+            except Exception as e:
+                print('INFO:', e)
                 pass
 
     def sequence_exist(self, table):
@@ -393,9 +417,13 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         """
         # print("schema:", sql)
         # Log the command we're running, then run it
-        # logger.debug("%s; (params %r)" % (sql, params))
+        logger.debug("%s; (params %r)" % (sql, params))
         if self.collect_sql:
-            self.collected_sql.append((sql % tuple(map(self.quote_value, params))) + ";")
+            ending = "" if sql.endswith(";") else ";"
+            if params is not None:
+                self.collected_sql.append((sql % tuple(map(self.quote_value, params))) + ending)
+            else:
+                self.collected_sql.append(sql + ending)
         else:
             with self.connection.cursor() as cursor:
                 cursor.execute(sql, params)

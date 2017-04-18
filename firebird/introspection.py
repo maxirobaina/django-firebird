@@ -1,3 +1,7 @@
+import datetime
+
+from django.utils import six
+from django.utils.encoding import force_str
 from django.db.backends.base.introspection import (
     BaseDatabaseIntrospection, FieldInfo, TableInfo,
 )
@@ -30,6 +34,18 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         # The SELECT statement in the function get_table_description takes care
         # of all of that.
     }
+
+    def quote_value(self, value):
+        if isinstance(value, (datetime.date, datetime.time, datetime.datetime)):
+            return "'%s'" % value
+        elif isinstance(value, six.string_types):
+            return repr(value)
+        elif isinstance(value, bool):
+            return "1" if value else "0"
+        elif value is None:
+            return "NULL"
+        else:
+            return force_str(value)
 
     def table_name_converter(self, name):
         return name.lower()
@@ -243,3 +259,21 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
             constraints[constraint]['columns'].append(column)
 
         return constraints
+
+    def _get_field_indexes(self, cursor, table_name, field_name):
+        """
+          Return a list of index names that are not created automatically (ie: Foreign Key)
+        """
+        table = "'%s'" % table_name.upper()
+        field = "'%s'" % field_name.upper()
+        cursor.execute("""
+            select s.rdb$index_name
+            from rdb$index_segments s
+            left join rdb$indices i on i.rdb$index_name = s.rdb$index_name
+            left join rdb$relation_constraints rc on rc.rdb$index_name = s.rdb$index_name
+            where i.rdb$relation_name = %s
+            and s.rdb$field_name = %s
+            and rc.rdb$constraint_type is null
+            order by s.rdb$field_position """ % (table, field,))
+
+        return [index_name[0].strip() for index_name in cursor.fetchall()]
