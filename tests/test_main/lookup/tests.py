@@ -643,7 +643,7 @@ class LookupTests(TestCase):
         Ensure that a regex lookup does not fail on non-string fields
         """
         Season.objects.create(year=2013, gt=444)
-        self.assertQuerysetEqual(Season.objects.filter(gt__regex=r'^444$'),
+        self.assertQuerysetEqual(Season.objects.filter(gt__regex=r'444'),
             ['<Season: 2013>'])
 
     def test_regex_non_ascii(self):

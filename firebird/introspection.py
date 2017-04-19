@@ -1,3 +1,4 @@
+import datetime
 from collections import namedtuple
 
 from django.utils import six
@@ -82,7 +83,13 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
                   else
                     f.rdb$field_type
                 end as type_code
-              , f.rdb$field_length
+
+              , case
+                  when (f.rdb$field_type in (14,37)) then
+                    f.rdb$character_length
+                  else
+                    f.rdb$field_length
+                end as field_length
               , f.rdb$field_precision
               , f.rdb$field_scale * -1
               , rf.rdb$null_flag
@@ -96,7 +103,7 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
             """ % (tbl_name,))
         items = []
         for r in cursor.fetchall():
-            # name type_code display_size internal_size precision scale null_ok
+            # name type_code display_size internal_size precision scale null_ok + default
             items.append(FieldInfo(r[0], r[1], r[2], r[2] or 0, r[3], r[4], not (r[5] == 1), r[6]))
         return items
 

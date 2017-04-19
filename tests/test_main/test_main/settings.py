@@ -12,13 +12,13 @@ DATABASES = {
         'PASSWORD': 'masterkey',
         'HOST': '127.0.0.1',
         'PORT': '',
-        'OPTIONS': {'charset': 'ISO8859_1'},
+        'OPTIONS': {'charset': 'UTF8'},
 
         'TEST': {
             'NAME': 'django-test-default',
-            'CHARSET': 'ISO8859_1',
-            'SERIALIZE': False
-
+            'CHARSET': 'UTF8',
+            'SERIALIZE': False,
+            'PAGE_SIZE': 8192
         }
     },
     'other': {
@@ -28,13 +28,13 @@ DATABASES = {
         'PASSWORD': 'masterkey',
         'HOST': '127.0.0.1',
         'PORT': '',
-        'OPTIONS': {'charset': 'ISO8859_1'},
+        'OPTIONS': {'charset': 'UTF8'},
 
         'TEST': {
             'NAME': 'django-test-other',
-            'CHARSET': 'ISO8859_1',
-            'SERIALIZE': False
-
+            'CHARSET': 'UTF8',
+            'SERIALIZE': False,
+            'PAGE_SIZE': 8192
         }
     }
 
