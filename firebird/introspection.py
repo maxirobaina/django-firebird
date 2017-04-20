@@ -77,8 +77,15 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
                   when (f.rdb$field_type = 261) then
                     260 + f.rdb$field_sub_type
                   else
-                    f.rdb$field_type end
-              , f.rdb$field_length
+                    f.rdb$field_type
+                end as type_code
+
+              , case
+                  when (f.rdb$field_type in (14,37)) then
+                    f.rdb$character_length
+                  else
+                    f.rdb$field_length
+                end as field_length
               , f.rdb$field_precision
               , f.rdb$field_scale * -1
               , rf.rdb$null_flag
@@ -89,9 +96,9 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
             order by
               rf.rdb$field_position
             """ % (tbl_name,))
-        # return [(r[0].strip().lower(), r[1], r[2], r[2] or 0, r[3], r[4], not (r[5] == 1)) for r in cursor.fetchall()]
         items = []
         for r in cursor.fetchall():
+            # name type_code display_size internal_size precision scale null_ok
             items.append(FieldInfo(r[0], r[1], r[2], r[2] or 0, r[3], r[4], not (r[5] == 1)))
         return items
 

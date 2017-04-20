@@ -24,6 +24,12 @@ class DatabaseCreation(BaseDatabaseCreation):
             return super(DatabaseCreation, self).sql_remove_table_constraints(model, references_to_delete, style)
         return []
 
+    def _check_active_connection(self, verbosity):
+        if self.connection:
+            if verbosity >= 1:
+                print("Closing active connection")
+            self.connection.close()
+
     def _get_connection_params(self, **overrides):
         settings_dict = self.connection.settings_dict
         conn_params = {'charset': 'UTF8'}
@@ -42,19 +48,33 @@ class DatabaseCreation(BaseDatabaseCreation):
         conn_params.update(overrides)
         return conn_params
 
-    def _check_active_connection(self, verbosity):
-        if self.connection:
-            if verbosity >= 1:
-                print("Closing active connection")
-            self.connection.close()
+    def _get_creation_params(self, **overrides):
+        settings_dict = self.connection.settings_dict
+        params = {'charset': 'UTF8'}
+        if settings_dict['USER']:
+            params['user'] = settings_dict['USER']
+        if settings_dict['PASSWORD']:
+            params['password'] = settings_dict['PASSWORD']
+
+        test_settings = settings_dict.get('TEST')
+        if test_settings:
+            if test_settings['NAME']:
+                params['database'] = settings_dict['NAME']
+            if test_settings['CHARSET']:
+                params['charset'] = test_settings['CHARSET']
+            if test_settings['PAGE_SIZE']:
+                params['page_size'] = test_settings['PAGE_SIZE']
+        params.update(overrides)
+        return params
 
     def _create_database(self, test_database_name, verbosity):
         self._check_active_connection(verbosity)
-        params = self._get_connection_params(database=test_database_name)
+        params = self._get_creation_params(database=test_database_name)
         connection = Database.create_database("""
                         CREATE DATABASE '%(database)s'
                         USER '%(user)s'
                         PASSWORD '%(password)s'
+                        PAGE_SIZE %(page_size)s
                         DEFAULT CHARACTER SET %(charset)s;""" % params)
         connection.execute_immediate("CREATE EXCEPTION teste '';")
         connection.commit()
