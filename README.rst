@@ -5,9 +5,6 @@ django-firebird
 .. image:: https://img.shields.io/pypi/v/django-firebird.svg
     :target: https://pypi.python.org/pypi/django-firebird
 
-.. image:: https://img.shields.io/pypi/dm/django-firebird.svg
-    :target: https://pypi.python.org/pypi/django-firebird
-
 .. image:: https://caniusepython3.com/project/django-firebird.svg
     :target: https://caniusepython3.com/project/django-firebird
 
