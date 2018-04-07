@@ -714,10 +714,6 @@ class IntegerFieldTests(test.TestCase):
         can be saved and retrieved without corruption.
         """
         min_value, max_value = self.documented_range
-
-        print "*" * 80
-        print self.documented_range
-
         instance = self.model(value=min_value)
         instance.full_clean()
         instance.save()
