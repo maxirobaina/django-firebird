@@ -1,3 +1,4 @@
+import logging
 import datetime
 
 from django.utils import six
@@ -5,6 +6,8 @@ from django.utils.encoding import force_str
 from django.db.models.fields import AutoField
 from django.db.backends.base.schema import BaseDatabaseSchemaEditor
 from django.db.backends.base.schema import _related_non_m2m_objects
+
+logger = logging.getLogger('django.db.backends.schema')
 
 
 class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
@@ -86,7 +89,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             self.deferred_sql.append(self._create_fk_sql(model, field, "_fk_%(to_table)s_%(to_column)s"))
         # Reset connection if required
         if self.connection.features.connection_persists_old_columns:
-            self.connection.close()
+            self.connection.commit()
 
     def _get_field_indexes(self, model, field):
         with self.connection.cursor() as cursor:
@@ -108,6 +111,30 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             self.execute(sql)
 
         super(DatabaseSchemaEditor, self).remove_field(model, field)
+
+    def _alter_column_type_sql(self, table, old_field, new_field, new_type):
+        if old_field.unique:
+            # In Firebird, alter a column type with a unique constraint will fails
+            # SQL Message : -607, Engine Code : 335544351
+            # So, we need delete the unique constraint first, alter the column and
+            # then create the constraint again.
+
+            # delete unique constraint and generate sql to recreate later
+            extra_sql = []
+            model = old_field.model
+            column = self.quote_name(old_field.column)
+            unq_names = self._constraint_names(old_field.model, [old_field.column], unique=True)
+            for name in unq_names:
+                self.execute(self._delete_constraint_sql(self.sql_delete_unique, model, name))
+                params = {"table": table, "name": name, "columns": self.quote_name(column)}
+                extra_sql.append((self.sql_create_unique % params, [],))
+
+            # alter column type
+            params = {"column": self.quote_name(new_field.column), "type": new_type}
+            alter_sql = self.sql_alter_column_type % params
+            return ((alter_sql, [],), extra_sql,)
+
+        return super(DatabaseSchemaEditor, self)._alter_column_type_sql(table, old_field, new_field, new_type)
 
     def _alter_field(self, model, old_field, new_field, old_type, new_type,
                      old_db_params, new_db_params, strict=False):
@@ -204,6 +231,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
                 actions.append((
                     self.sql_alter_column_default % {
                         "column": self.quote_name(new_field.column),
+                        "type": new_type,
                         "default": self.prepare_default(new_default),
                     },
                     [],
@@ -212,6 +240,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
                 actions.append((
                     self.sql_alter_column_default % {
                         "column": self.quote_name(new_field.column),
+                        "type": new_type,
                         "default": "%s",
                     },
                     [new_default],
@@ -352,12 +381,13 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
                 "table": self.quote_name(model._meta.db_table),
                 "changes": self.sql_alter_column_no_default % {
                     "column": self.quote_name(new_field.column),
+                    "type": new_type,
                 }
             }
             self.execute(sql)
         # Reset connection if required
         if self.connection.features.connection_persists_old_columns:
-            self.connection.close()
+            self.connection.commit()
 
     def _model_indexes_sql(self, model):
         for field in model._meta.local_fields:
@@ -395,7 +425,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             try:
                 self.execute(sql)
             except Exception as e:
-                print('INFO:', e)
+                logger.info(str(e))
                 pass
 
     def sequence_exist(self, table):

@@ -18,8 +18,9 @@ from django.db.models.fields.related import (
 )
 from django.db.transaction import atomic
 from django.test import (
-    TransactionTestCase, skipIfDBFeature, skipUnlessDBFeature,
+    TransactionTestCase, mock, skipIfDBFeature, skipUnlessDBFeature,
 )
+from django.utils.timezone import UTC
 
 from .fields import (
     CustomManyToManyField, InheritedManyToManyField, MediumBlobField,
@@ -174,8 +175,18 @@ class SchemaTests(TransactionTestCase):
                 constraints_for_column.append(name)
         return sorted(constraints_for_column)
 
-    # Tests
+    def check_added_field_default(self, schema_editor, model, field, field_name, expected_default,
+                                  cast_function=None):
+        with connection.cursor() as cursor:
+            schema_editor.add_field(model, field)
+            cursor.connection.commit()
+            cursor.execute("SELECT {} FROM {};".format(field_name, model._meta.db_table))
+            database_default = cursor.fetchall()[0][0]
+            if cast_function and not type(database_default) == type(expected_default):
+                database_default = cast_function(database_default)
+            self.assertEqual(database_default, expected_default)
 
+    # Tests
     def test_creation_deletion(self):
         """
         Tries creating a model's table, and then deleting it.
@@ -189,10 +200,8 @@ class SchemaTests(TransactionTestCase):
         with connection.schema_editor() as editor:
             editor.delete_model(Author)
         # Check that it's gone
-        self.assertRaises(
-            DatabaseError,
-            lambda: list(Author.objects.all()),
-        )
+        with self.assertRaises(DatabaseError):
+            list(Author.objects.all())
 
     @skipUnlessDBFeature('supports_foreign_keys')
     def test_fk(self):
@@ -867,6 +876,15 @@ class SchemaTests(TransactionTestCase):
                     author_is_fk = True
         self.assertTrue(author_is_fk, "No FK constraint for author_id found")
 
+    def test_alter_db_table_case(self):
+        # Create the table
+        with connection.schema_editor() as editor:
+            editor.create_model(Author)
+        # Alter the case of the table
+        old_table_name = Author._meta.db_table
+        with connection.schema_editor() as editor:
+            editor.alter_db_table(Author, old_table_name, old_table_name.upper())
+
     def test_alter_implicit_id_to_explicit(self):
         """
         Should be able to convert an implicit "id" field to an explicit "id"
@@ -1076,7 +1094,8 @@ class SchemaTests(TransactionTestCase):
         new_field = M2MFieldClass("schema.TagM2MTest", related_name="authors")
         new_field.contribute_to_class(LocalAuthorWithM2M, "tags")
         # Ensure there's no m2m table there
-        self.assertRaises(DatabaseError, self.column_classes, new_field.remote_field.through)
+        with self.assertRaises(DatabaseError):
+            self.column_classes(new_field.remote_field.through)
         # Add the field
         with connection.schema_editor() as editor:
             editor.add_field(LocalAuthorWithM2M, new_field)
@@ -1092,7 +1111,8 @@ class SchemaTests(TransactionTestCase):
         with connection.schema_editor() as editor:
             editor.remove_field(LocalAuthorWithM2M, new_field)
         # Ensure there's no m2m table there
-        self.assertRaises(DatabaseError, self.column_classes, new_field.remote_field.through)
+        with self.assertRaises(DatabaseError):
+            self.column_classes(new_field.remote_field.through)
 
         # Make sure the model state is coherent with the table one now that
         # we've removed the tags field.
@@ -1195,10 +1215,8 @@ class SchemaTests(TransactionTestCase):
         with connection.schema_editor() as editor:
             editor.alter_field(LocalBookWithM2M, old_field, new_field)
         # Ensure old M2M is gone
-        self.assertRaises(
-            DatabaseError,
-            self.column_classes, LocalBookWithM2M._meta.get_field("tags").remote_field.through
-        )
+        with self.assertRaises(DatabaseError):
+            self.column_classes(LocalBookWithM2M._meta.get_field("tags").remote_field.through)
 
         # This model looks like the new model and is used for teardown.
         opts = LocalBookWithM2M._meta
@@ -1267,7 +1285,8 @@ class SchemaTests(TransactionTestCase):
             editor.create_model(Tag)
         # Ensure the field is unique to begin with
         Tag.objects.create(title="foo", slug="foo")
-        self.assertRaises(IntegrityError, Tag.objects.create, title="bar", slug="foo")
+        with self.assertRaises(IntegrityError):
+            Tag.objects.create(title="bar", slug="foo")
         Tag.objects.all().delete()
         # Alter the slug field to be non-unique
         old_field = Tag._meta.get_field("slug")
@@ -1286,7 +1305,8 @@ class SchemaTests(TransactionTestCase):
             editor.alter_field(Tag, new_field, new_field2, strict=True)
         # Ensure the field is unique again
         Tag.objects.create(title="foo", slug="foo")
-        self.assertRaises(IntegrityError, Tag.objects.create, title="bar", slug="foo")
+        with self.assertRaises(IntegrityError):
+            Tag.objects.create(title="bar", slug="foo")
         Tag.objects.all().delete()
         # Rename the field
         new_field3 = SlugField(unique=True)
@@ -1295,7 +1315,8 @@ class SchemaTests(TransactionTestCase):
             editor.alter_field(Tag, new_field2, new_field3, strict=True)
         # Ensure the field is still unique
         TagUniqueRename.objects.create(title="foo", slug2="foo")
-        self.assertRaises(IntegrityError, TagUniqueRename.objects.create, title="bar", slug2="foo")
+        with self.assertRaises(IntegrityError):
+            TagUniqueRename.objects.create(title="bar", slug2="foo")
         Tag.objects.all().delete()
 
     def test_unique_together(self):
@@ -1309,7 +1330,8 @@ class SchemaTests(TransactionTestCase):
         UniqueTest.objects.create(year=2012, slug="foo")
         UniqueTest.objects.create(year=2011, slug="foo")
         UniqueTest.objects.create(year=2011, slug="bar")
-        self.assertRaises(IntegrityError, UniqueTest.objects.create, year=2012, slug="foo")
+        with self.assertRaises(IntegrityError):
+            UniqueTest.objects.create(year=2012, slug="foo")
         UniqueTest.objects.all().delete()
         # Alter the model to its non-unique-together companion
         with connection.schema_editor() as editor:
@@ -1325,7 +1347,8 @@ class SchemaTests(TransactionTestCase):
             editor.alter_unique_together(UniqueTest, [], UniqueTest._meta.unique_together)
         # Ensure the fields are unique again
         UniqueTest.objects.create(year=2012, slug="foo")
-        self.assertRaises(IntegrityError, UniqueTest.objects.create, year=2012, slug="foo")
+        with self.assertRaises(IntegrityError):
+            UniqueTest.objects.create(year=2012, slug="foo")
         UniqueTest.objects.all().delete()
 
     def test_unique_together_with_fk(self):
@@ -1626,10 +1649,8 @@ class SchemaTests(TransactionTestCase):
         with connection.schema_editor() as editor:
             editor.delete_model(Thing)
         # Check that it's gone
-        self.assertRaises(
-            DatabaseError,
-            lambda: list(Thing.objects.all()),
-        )
+        with self.assertRaises(DatabaseError):
+            list(Thing.objects.all())
 
     @skipUnlessDBFeature('supports_foreign_keys')
     def test_remove_constraints_capital_letters(self):
@@ -1677,6 +1698,7 @@ class SchemaTests(TransactionTestCase):
                     "column": editor.quote_name(column),
                     "to_table": editor.quote_name(table),
                     "to_column": editor.quote_name(model._meta.auto_field.column),
+                    "deferrable": connection.ops.deferrable_sql(),
                 }
             )
             editor.alter_field(model, get_field(Author, CASCADE, field_class=ForeignKey), field)
@@ -1738,7 +1760,7 @@ class SchemaTests(TransactionTestCase):
             editor.create_model(Author)
         # Create a row
         Author.objects.create(name='Anonymous1')
-        self.assertEqual(Author.objects.get().height, None)
+        self.assertIsNone(Author.objects.get().height)
         old_field = Author._meta.get_field('height')
         # The default from the new field is used in updating existing rows.
         new_field = IntegerField(blank=True, default=42)
@@ -1905,3 +1927,63 @@ class SchemaTests(TransactionTestCase):
         new_field.set_attributes_from_name('id')
         with connection.schema_editor() as editor:
             editor.alter_field(Node, old_field, new_field)
+
+    @mock.patch('django.db.backends.base.schema.datetime')
+    @mock.patch('django.db.backends.base.schema.timezone')
+    def test_add_datefield_and_datetimefield_use_effective_default(self, mocked_datetime, mocked_tz):
+        """
+        effective_default() should be used for DateField, DateTimeField, and
+        TimeField if auto_now or auto_add_now is set (#25005).
+        """
+        now = datetime.datetime(month=1, day=1, year=2000, hour=1, minute=1)
+        now_tz = datetime.datetime(month=1, day=1, year=2000, hour=1, minute=1, tzinfo=UTC())
+        mocked_datetime.now = mock.MagicMock(return_value=now)
+        mocked_tz.now = mock.MagicMock(return_value=now_tz)
+        # Create the table
+        with connection.schema_editor() as editor:
+            editor.create_model(Author)
+        # Check auto_now/auto_now_add attributes are not defined
+        columns = self.column_classes(Author)
+        self.assertNotIn("dob_auto_now", columns)
+        self.assertNotIn("dob_auto_now_add", columns)
+        self.assertNotIn("dtob_auto_now", columns)
+        self.assertNotIn("dtob_auto_now_add", columns)
+        self.assertNotIn("tob_auto_now", columns)
+        self.assertNotIn("tob_auto_now_add", columns)
+        # Create a row
+        Author.objects.create(name='Anonymous1')
+        # Ensure fields were added with the correct defaults
+        dob_auto_now = DateField(auto_now=True)
+        dob_auto_now.set_attributes_from_name('dob_auto_now')
+        self.check_added_field_default(
+            editor, Author, dob_auto_now, 'dob_auto_now', now.date(),
+            cast_function=lambda x: x.date(),
+        )
+        dob_auto_now_add = DateField(auto_now_add=True)
+        dob_auto_now_add.set_attributes_from_name('dob_auto_now_add')
+        self.check_added_field_default(
+            editor, Author, dob_auto_now_add, 'dob_auto_now_add', now.date(),
+            cast_function=lambda x: x.date(),
+        )
+        dtob_auto_now = DateTimeField(auto_now=True)
+        dtob_auto_now.set_attributes_from_name('dtob_auto_now')
+        self.check_added_field_default(
+            editor, Author, dtob_auto_now, 'dtob_auto_now', now,
+        )
+        dt_tm_of_birth_auto_now_add = DateTimeField(auto_now_add=True)
+        dt_tm_of_birth_auto_now_add.set_attributes_from_name('dtob_auto_now_add')
+        self.check_added_field_default(
+            editor, Author, dt_tm_of_birth_auto_now_add, 'dtob_auto_now_add', now,
+        )
+        tob_auto_now = TimeField(auto_now=True)
+        tob_auto_now.set_attributes_from_name('tob_auto_now')
+        self.check_added_field_default(
+            editor, Author, tob_auto_now, 'tob_auto_now', now.time(),
+            cast_function=lambda x: x.time(),
+        )
+        tob_auto_now_add = TimeField(auto_now_add=True)
+        tob_auto_now_add.set_attributes_from_name('tob_auto_now_add')
+        self.check_added_field_default(
+            editor, Author, tob_auto_now_add, 'tob_auto_now_add', now.time(),
+            cast_function=lambda x: x.time(),
+        )

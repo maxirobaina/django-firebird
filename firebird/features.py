@@ -16,7 +16,7 @@ class DatabaseFeatures(BaseDatabaseFeatures):
     has_zoneinfo_database = False
     uses_savepoints = True
     supports_paramstyle_pyformat = False
-    # connection_persists_old_columns = True
+    connection_persists_old_columns = False
     can_rollback_ddl = True
     requires_literal_defaults = True
     has_case_insensitive_like = False

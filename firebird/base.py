@@ -240,7 +240,8 @@ class FirebirdCursorWrapper(object):
             # Map some error codes to IntegrityError, since they seem to be
             # misclassified and Django would prefer the more logical place.
             # fdb: raise exception as tuple with (error_msg, sqlcode, error_code)
-            if e.args[1] in self.codes_for_integrityerror:
+            code = self.get_sql_code(e)
+            if code in self.codes_for_integrityerror:
                 six.reraise(utils.IntegrityError, utils.IntegrityError(*self.error_info(e, query, params)), sys.exc_info()[2])
             raise
 
@@ -254,7 +255,8 @@ class FirebirdCursorWrapper(object):
             # Map some error codes to IntegrityError, since they seem to be
             # misclassified and Django would prefer the more logical place.
             # fdb: raise exception as tuple with (error_msg, sqlcode, error_code)
-            if e.args[1] in self.codes_for_integrityerror:
+            code = self.get_sql_code(e)
+            if code in self.codes_for_integrityerror:
                 six.reraise(utils.IntegrityError, utils.IntegrityError(*self.error_info(e, query, param_list[0])), sys.exc_info()[2])
             raise
 
@@ -265,6 +267,13 @@ class FirebirdCursorWrapper(object):
         if num_params == 0:
             return smart_str(query, self.encoding)
         return smart_str(query % tuple("?" * num_params), self.encoding)
+
+    def get_sql_code(self, e):
+        try:
+            sql_code = e.args[1]
+        except IndexError:
+            sql_code = None
+        return sql_code
 
     def error_info(self, e, q, p):
         # fdb: raise exception as tuple with (error_msg, sqlcode, error_code)

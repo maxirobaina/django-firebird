@@ -1,6 +1,16 @@
 Changelog
 =========
 
+v1.10.0
+-------
++ Schema migration: fail to alter column size with unique index #82
+
+
+v1.9.1
+------
+ + Update README
+
+
 v1.9.0
 ------
 + Update schema.py from django 1.9 #64
