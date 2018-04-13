@@ -98,7 +98,8 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
 
     def remove_field(self, model, field):
         # If remove a AutoField, we need remove all related stuff
-        if isinstance(field, AutoField):
+        # if isinstance(field, AutoField):
+        if field.get_internal_type() in ("AutoField", "BigAutoField"):
             tbl = model._meta.db_table
             trg_name = self.connection.ops.get_sequence_trigger_name(tbl)
             self.execute('DROP TRIGGER %s' % trg_name)

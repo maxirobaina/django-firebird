@@ -46,6 +46,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
 
     data_types = {
         'AutoField': 'integer',
+        'BigAutoField': 'bigint',
         'BinaryField': 'blob sub_type 0',
         'BooleanField': 'smallint',
         'CharField': 'varchar(%(max_length)s)',

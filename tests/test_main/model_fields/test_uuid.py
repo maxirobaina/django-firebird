@@ -3,7 +3,9 @@ import uuid
 
 from django.core import exceptions, serializers
 from django.db import IntegrityError, models
-from django.test import TestCase, TransactionTestCase, skipUnlessDBFeature
+from django.test import (
+    SimpleTestCase, TestCase, TransactionTestCase, skipUnlessDBFeature,
+)
 
 from .models import (
     NullableUUIDModel, PrimaryKeyUUIDModel, RelatedToUUIDModel, UUIDGrandchild,
@@ -35,19 +37,24 @@ class TestSaveLoad(TestCase):
     def test_null_handling(self):
         NullableUUIDModel.objects.create(field=None)
         loaded = NullableUUIDModel.objects.get()
-        self.assertEqual(loaded.field, None)
+        self.assertIsNone(loaded.field)
+
+    def test_pk_validated(self):
+        with self.assertRaisesMessage(TypeError, 'is not a valid UUID'):
+            PrimaryKeyUUIDModel.objects.get(pk={})
+
+        with self.assertRaisesMessage(TypeError, 'is not a valid UUID'):
+            PrimaryKeyUUIDModel.objects.get(pk=[])
 
     def test_wrong_value(self):
-        self.assertRaisesMessage(
-            ValueError, 'badly formed hexadecimal UUID string',
-            UUIDModel.objects.get, field='not-a-uuid')
+        with self.assertRaisesMessage(ValueError, 'badly formed hexadecimal UUID string'):
+            UUIDModel.objects.get(field='not-a-uuid')
 
-        self.assertRaisesMessage(
-            ValueError, 'badly formed hexadecimal UUID string',
-            UUIDModel.objects.create, field='not-a-uuid')
+        with self.assertRaisesMessage(ValueError, 'badly formed hexadecimal UUID string'):
+            UUIDModel.objects.create(field='not-a-uuid')
 
 
-class TestMigrations(TestCase):
+class TestMigrations(SimpleTestCase):
 
     def test_deconstruct(self):
         field = models.UUIDField()
@@ -76,8 +83,11 @@ class TestQuerying(TestCase):
         )
 
 
-class TestSerialization(TestCase):
-    test_data = '[{"fields": {"field": "550e8400-e29b-41d4-a716-446655440000"}, "model": "model_fields.uuidmodel", "pk": null}]'
+class TestSerialization(SimpleTestCase):
+    test_data = (
+        '[{"fields": {"field": "550e8400-e29b-41d4-a716-446655440000"}, '
+        '"model": "model_fields.uuidmodel", "pk": null}]'
+    )
 
     def test_dumping(self):
         instance = UUIDModel(field=uuid.UUID('550e8400e29b41d4a716446655440000'))
@@ -89,7 +99,7 @@ class TestSerialization(TestCase):
         self.assertEqual(instance.field, uuid.UUID('550e8400-e29b-41d4-a716-446655440000'))
 
 
-class TestValidation(TestCase):
+class TestValidation(SimpleTestCase):
     def test_invalid_uuid(self):
         field = models.UUIDField()
         with self.assertRaises(exceptions.ValidationError) as cm:

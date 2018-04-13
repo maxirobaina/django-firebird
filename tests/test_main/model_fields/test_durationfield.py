@@ -4,7 +4,7 @@ import json
 from django import forms
 from django.core import exceptions, serializers
 from django.db import models
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 
 from .models import DurationModel, NullDurationModel
 
@@ -20,7 +20,7 @@ class TestSaveLoad(TestCase):
     def test_create_empty(self):
         NullDurationModel.objects.create()
         loaded = NullDurationModel.objects.get()
-        self.assertEqual(loaded.field, None)
+        self.assertIsNone(loaded.field)
 
     def test_fractional_seconds(self):
         value = datetime.timedelta(seconds=2.05)
@@ -52,7 +52,7 @@ class TestQuerying(TestCase):
         )
 
 
-class TestSerialization(TestCase):
+class TestSerialization(SimpleTestCase):
     test_data = '[{"fields": {"field": "1 01:00:00"}, "model": "model_fields.durationmodel", "pk": null}]'
 
     def test_dumping(self):
@@ -65,7 +65,7 @@ class TestSerialization(TestCase):
         self.assertEqual(instance.field, datetime.timedelta(days=1, hours=1))
 
 
-class TestValidation(TestCase):
+class TestValidation(SimpleTestCase):
 
     def test_invalid_string(self):
         field = models.DurationField()
@@ -79,7 +79,7 @@ class TestValidation(TestCase):
         )
 
 
-class TestFormField(TestCase):
+class TestFormField(SimpleTestCase):
     # Tests for forms.DurationField are in the forms_tests app.
 
     def test_formfield(self):

@@ -139,6 +139,7 @@ INSTALLED_APPS = (
     # 'django.contrib.admindocs',
     'test_base',
     'model_fields',
+    'many_to_one',
     'transactions',
     'schema',
     'introspection',
