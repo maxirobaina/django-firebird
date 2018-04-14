@@ -5,6 +5,7 @@ from datetime import datetime, time
 from django.conf import settings
 from django.db.backends.base.operations import BaseDatabaseOperations
 from django.db.backends import utils
+from django.db.utils import DatabaseError
 from django.utils.functional import cached_property
 from django.utils import six
 from django.utils import timezone
@@ -241,7 +242,7 @@ class DatabaseOperations(BaseDatabaseOperations):
 
     def combine_duration_expression(self, connector, sub_expressions):
         if connector not in ['+', '-']:
-            raise utils.DatabaseError('Invalid connector for timedelta: %s.' % connector)
+            raise DatabaseError('Invalid connector for timedelta: %s.' % connector)
 
         sign = 1 if connector == '+' else -1
         sql, timedelta = sub_expressions
