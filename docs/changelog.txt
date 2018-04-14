@@ -4,6 +4,8 @@ Changelog
 v1.10.0
 -------
 + Schema migration: fail to alter column size with unique index #82
++ Support for BigAutoField #83
++ Fix expression generation #85
 
 
 v1.9.1

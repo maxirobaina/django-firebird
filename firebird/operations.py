@@ -228,6 +228,17 @@ class DatabaseOperations(BaseDatabaseOperations):
             value = uuid.UUID(value)
         return value
 
+    def combine_expression(self, connector, sub_expressions):
+        if connector == '^':
+            return 'POWER(%s)' % ','.join(sub_expressions)
+        elif connector == '%%':
+            return 'MOD(%s)' % ','.join(sub_expressions)
+        elif connector == '&':
+            return 'BIN_AND(%s)' % ','.join(sub_expressions)
+        elif connector == '|':
+            return 'BIN_OR(%s)' % ','.join(sub_expressions)
+        return super(DatabaseOperations, self).combine_expression(connector, sub_expressions)
+
     def combine_duration_expression(self, connector, sub_expressions):
         if connector not in ['+', '-']:
             raise utils.DatabaseError('Invalid connector for timedelta: %s.' % connector)

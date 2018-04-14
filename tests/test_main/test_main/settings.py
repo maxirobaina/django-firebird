@@ -148,6 +148,7 @@ INSTALLED_APPS = (
     'dates',
     'datetimes',
     'lookup',
+    'expressions',
 )
 
 # A sample logging configuration. The only tangible logging
