@@ -58,6 +58,20 @@ class BasicExpressionsTests(TestCase):
         )
         self.assertEqual(companies['result'], 2395)
 
+    def test_expressions_evaluation_fail_78(self):
+        """
+           Test django-firebid issue #78 at github
+        """
+        companies = Company.objects.annotate(
+            salaries=F('ceo__salary'),
+        ).values('num_employees', 'salaries').aggregate(
+            result=Sum(
+                F('salaries') + F('num_employees') / 100,
+                output_field=models.IntegerField()
+            ),
+        )
+        self.assertEqual(companies['result'], 83)
+
     def test_annotate_values_filter(self):
         companies = Company.objects.annotate(
             foo=RawSQL('%s', ['value']),
