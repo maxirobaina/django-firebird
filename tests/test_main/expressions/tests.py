@@ -62,19 +62,23 @@ class BasicExpressionsTests(TestCase):
         """
            Test django-firebid issue #78 at github
         """
+        # Cast(Value(datetime.timedelta(days=4)), models.DurationField())
+        cien = Cast(Value(100), output_field=models.IntegerField())
         companies = Company.objects.annotate(
             salaries=F('ceo__salary'),
         ).values('num_employees', 'salaries').aggregate(
             result=Sum(
-                F('salaries') + F('num_employees') / 100,
+                F('salaries') + F('num_employees') / cien,
                 output_field=models.IntegerField()
             ),
         )
         self.assertEqual(companies['result'], 83)
 
     def test_annotate_values_filter(self):
+        value = Cast(RawSQL('%s', ['value']), models.CharField(max_length=10))
         companies = Company.objects.annotate(
-            foo=RawSQL('%s', ['value']),
+            #foo=RawSQL('%s', ['value']),
+            foo=value,
         ).filter(foo='value').order_by('name')
         self.assertQuerysetEqual(
             companies, [
@@ -933,15 +937,19 @@ class FTimeDeltaTests(TestCase):
         # Exclude e1 which has very high precision so we can test this on all
         # backends regardless of whether or not it supports
         # microsecond_precision.
+
+        value = Cast(Value(self.stime, models.DateTimeField()), models.DateTimeField())
+
         over_estimate = Experiment.objects.exclude(name='e1').filter(
-            completed__gt=self.stime + F('estimated_time'),
+            # completed__gt=self.stime + F('estimated_time'),
+            completed__gt=F('estimated_time') + value,
         ).order_by('name')
         self.assertQuerysetEqual(over_estimate, ['e3', 'e4', 'e5'], lambda e: e.name)
 
     def test_date_minus_duration(self):
         value = (
-            Cast(Value(datetime.timedelta(days=4)), models.DurationField())
-            if connection.vendor == 'oracle'
+            Cast(Value(datetime.timedelta(days=4), models.DurationField()), models.DurationField())
+            if connection.vendor == 'firebird'
             else Value(datetime.timedelta(days=4), output_field=models.DurationField())
         )
         more_than_4_days = Experiment.objects.filter(assigned__lt=F('completed') - value)

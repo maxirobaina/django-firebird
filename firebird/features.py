@@ -42,6 +42,10 @@ class DatabaseFeatures(BaseDatabaseFeatures):
     # Does the __regex lookup support backreferencing and grouping?
     supports_regex_backreferencing = False
 
+    # Does the database driver supports same type temporal data subtraction
+    # by returning the type used to store duration field?
+    supports_temporal_subtraction = False
+
     @cached_property
     def supports_transactions(self):
         return True

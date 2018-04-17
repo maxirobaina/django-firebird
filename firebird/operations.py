@@ -1,6 +1,5 @@
 import uuid
-
-from datetime import datetime, time
+import datetime
 
 from django.conf import settings
 from django.db.backends.base.operations import BaseDatabaseOperations
@@ -246,16 +245,49 @@ class DatabaseOperations(BaseDatabaseOperations):
 
         sign = 1 if connector == '+' else -1
         sql, timedelta = sub_expressions
-        if timedelta.days:
-            unit = 'day'
-            value = timedelta.days
-        elif timedelta.seconds:
+
+        """
+        sql, timedelta can be either:
+            - An integer number of microseconds
+            - A string representing a timedelta object
+            - A string representing a datetime
+
+        """
+        if isinstance(sql, datetime.timedelta):
+            # normalize to sql + duration
+            sql, timedelta = timedelta, sql
+
+        if isinstance(timedelta, datetime.timedelta):
+            if timedelta.days:
+                unit = 'day'
+                value = timedelta.days * sign
+            elif timedelta.seconds:
+                unit = 'second'
+                value = ((timedelta.days * 86400) + timedelta.seconds) * sign
+            elif timedelta.microseconds:
+                unit = 'millisecond'
+                value = timedelta.microseconds * sign
+            else:
+                unit = 'second'
+                value = 0
+        elif isinstance(timedelta, six.integer_types):
             unit = 'second'
-            value = ((timedelta.days * 86400) + timedelta.seconds)
-        elif timedelta.microseconds:
-            unit = 'millisecond'
-            value = timedelta.microseconds
-        return 'DATEADD(%s %s TO %s)' % (value * sign, unit, sql)
+            value = str((decimal.Decimal(timedelta) * sign) / decimal.Decimal(1000000))
+        elif isinstance(timedelta, six.string_types):
+            if timedelta.isdigit():
+                unit = 'second'
+                value = "(%s * %s) / 1000000" % (value, sign,)
+            else:
+                return super(DatabaseOperations, self).combine_duration_expression(connector, sub_expressions)
+        else:
+            unit = 'second'
+            value = timedelta
+
+        return 'DATEADD(%s %s TO %s)' % (value, unit, sql)
+
+    def format_for_duration_arithmetic(self, sql):
+        """Do nothing here, we will handle it in the custom function."""
+        return sql
 
     def year_lookup_bounds_for_datetime_field(self, value):
         first = '%s-01-01 00:00:00' % value
@@ -438,7 +470,7 @@ class DatabaseOperations(BaseDatabaseOperations):
                 raise ValueError("Firebird backend does not support timezone-aware datetimes when USE_TZ is False.")
 
         # Replaces 6 digits microseconds to 4 digits allowed in Firebird
-        if isinstance(value, datetime):
+        if isinstance(value, datetime.datetime):
             value = str(value)
         if isinstance(value, six.string_types):
             value = value[:24]
@@ -453,7 +485,7 @@ class DatabaseOperations(BaseDatabaseOperations):
             raise ValueError("Firebird backend does not support timezone-aware times.")
 
         # Replaces 6 digits microseconds to 4 digits allowed in Firebird
-        if isinstance(value, time):
+        if isinstance(value, datetime.time):
             value = str(value)
         if isinstance(value, six.string_types):
             value = value[:13]

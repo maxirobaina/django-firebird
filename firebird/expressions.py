@@ -21,11 +21,22 @@ def firebird_fix_value_expr(self, compiler, connection):
     """
     Firebird fails to resolve some params replacement
     https://stackoverflow.com/questions/37348807/data-type-unknown-in-case-expression-with-only-parameters-as-values
+
+    See a workaround at:
+    https://groups.google.com/d/msg/django-developers/UcO_ha1APPk/n3E3JzFvBwAJ
     """
     sql, params = self.as_sql(compiler, connection)
-    prm = tuple(quote_value(p) for p in params)
-    return sql % prm, []
+
+    if len(params) > 0:
+        print "params:", params, type(params[0])
+    else:
+        print "params:", params, type(params)
+
+    _params = tuple(quote_value(p) for p in params)
+    if _params:
+        return sql % _params, []
+    return sql, params
 
 
-RawSQL.as_firebird = firebird_fix_value_expr
-Value.as_firebird = firebird_fix_value_expr
+# RawSQL.as_firebird = firebird_fix_value_expr
+# Value.as_firebird = firebird_fix_value_expr
