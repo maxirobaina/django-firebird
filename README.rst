@@ -20,8 +20,8 @@ The ``master`` branch is an *in development* version of django-firebird. This ma
 
 
 This version of django-firebird is working with *fbd* [1], therefore it will work only with firebird 2.x and later.
-The stable version corresponds with django 1.9 and live into ``stable/1.9.x`` branch.
-The current master branch of this repository is being developed under django 1.10.x. For previous Django stable version check
+The stable version corresponds with django 1.10 and live into ``stable/1.10.x`` branch.
+The current master branch of this repository is being developed under django 1.11.x. For previous Django stable version check
 the branch list of this repository.
 *fbd* is the official stable python-firebird driver, also it has support for python 3.
 
@@ -32,7 +32,7 @@ the branch list of this repository.
 Requirements
 ------------
   * Python 2.7+ or Python 3.x
-  * Django 1.9.x
+  * Django 1.10.x
   * fdb (http://pypi.python.org/pypi/fdb/)
 
 Instalation
@@ -83,9 +83,16 @@ Modify your setting.py ::
         }
     }
 
+Known bugs and issues
+---------------------
+
+* Some database migrations doesn't work by default. Sometimes is better make intermediate migrations for solve problems.
+* Some Query Expressions doesn't work by default. We need to make some workaround, ie: Use Cast().
+* Combined duration expressions need more research. No all combination of expressions works.
+
+
 Contributing
 ------------
-
 
 Code and issues is in GitHub:
 
@@ -94,6 +101,7 @@ Code and issues is in GitHub:
 We also have a mailing list:
 
     http://groups.google.com/group/django-firebird-dev
+
 
 Legacy driver
 -------------

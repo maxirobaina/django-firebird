@@ -6,6 +6,7 @@ v1.10.0
 + Schema migration: fail to alter column size with unique index #82
 + Support for BigAutoField #83
 + Fix expression generation #85
++ AttributeError: 'DatabaseWrapper' object has no attribute 'pattern_ops' #86
 
 
 v1.9.1
