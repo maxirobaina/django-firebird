@@ -217,7 +217,8 @@ class DataModel(models.Model):
 
 
 class Document(models.Model):
-    myfile = models.FileField(upload_to='unused')
+    myfile = models.FileField(upload_to='unused', unique=True)
+
 
 ###############################################################################
 # ImageField
@@ -359,7 +360,7 @@ class AllFieldsModel(models.Model):
 
     object_id = models.PositiveIntegerField()
     # content_type = models.ForeignKey(ContentType, models.CASCADE)
-    gfk = GenericForeignKey()
+    # gfk = GenericForeignKey()
     gr = GenericRelation(DataModel)
 
 

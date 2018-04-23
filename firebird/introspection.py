@@ -8,7 +8,7 @@ from django.db.backends.base.introspection import (
 )
 
 
-FieldInfo = namedtuple('FieldInfo', FieldInfo._fields + ('default',))
+# FieldInfo = namedtuple('FieldInfo', FieldInfo._fields + ('default',))
 
 
 class DatabaseIntrospection(BaseDatabaseIntrospection):

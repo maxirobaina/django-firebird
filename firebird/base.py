@@ -118,6 +118,13 @@ class DatabaseWrapper(BaseDatabaseWrapper):
     Database = Database
     SchemaEditorClass = DatabaseSchemaEditor
 
+    # Classes instantiated in __init__().
+    client_class = DatabaseClient
+    creation_class = DatabaseCreation
+    features_class = DatabaseFeatures
+    introspection_class = DatabaseIntrospection
+    ops_class = DatabaseOperations
+
     def __init__(self, *args, **kwargs):
         super(DatabaseWrapper, self).__init__(*args, **kwargs)
 
@@ -176,7 +183,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         """Initializes the database connection settings."""
         pass
 
-    def create_cursor(self):
+    def create_cursor(self, name=None):
         """Creates a cursor. Assumes that a connection is established."""
         cursor = self.connection.cursor()
         return FirebirdCursorWrapper(cursor, self.encoding)

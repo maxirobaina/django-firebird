@@ -59,7 +59,7 @@ class ColumnTypes(models.Model):
     file_path_field = models.FilePathField()
     float_field = models.FloatField()
     int_field = models.IntegerField()
-    gen_ip_adress_field = models.GenericIPAddressField(protocol="ipv4")
+    gen_ip_address_field = models.GenericIPAddressField(protocol="ipv4")
     pos_int_field = models.PositiveIntegerField()
     pos_small_int_field = models.PositiveSmallIntegerField()
     slug_field = models.SlugField()
@@ -67,6 +67,7 @@ class ColumnTypes(models.Model):
     text_field = models.TextField()
     time_field = models.TimeField()
     url_field = models.URLField()
+    uuid_field = models.UUIDField()
 
 
 class UniqueTogether(models.Model):

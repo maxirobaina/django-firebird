@@ -20,8 +20,8 @@ class SQLCompiler(compiler.SQLCompiler):
             values.append(v)
         return row[:index_start] + tuple(values)
 
-    def as_sql(self, with_limits=True, with_col_aliases=False, subquery=False):
-        sql, params = super(SQLCompiler, self).as_sql(with_limits=False, with_col_aliases=with_col_aliases, subquery=subquery)
+    def as_sql(self, with_limits=True, with_col_aliases=False):
+        sql, params = super(SQLCompiler, self).as_sql(with_limits=False, with_col_aliases=with_col_aliases)
 
         if with_limits:
             limits = []
