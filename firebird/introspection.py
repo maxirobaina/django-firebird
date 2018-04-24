@@ -1,14 +1,12 @@
 import datetime
-from collections import namedtuple
+import warnings
 
 from django.utils import six
 from django.utils.encoding import force_str
+from django.utils.deprecation import RemovedInDjango21Warning
 from django.db.backends.base.introspection import (
     BaseDatabaseIntrospection, FieldInfo, TableInfo,
 )
-
-
-# FieldInfo = namedtuple('FieldInfo', FieldInfo._fields + ('default',))
 
 
 class DatabaseIntrospection(BaseDatabaseIntrospection):
@@ -157,6 +155,11 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
             {'primary_key': boolean representing whether it's the primary key,
              'unique': boolean representing whether it's a unique index/constraint}
         """
+
+        warnings.warn(
+            "get_indexes() is deprecated in favor of get_constraints().",
+            RemovedInDjango21Warning, stacklevel=2
+        )
 
         # This query retrieves each field name and index type on the given table.
         tbl_name = "'%s'" % table_name.upper()
