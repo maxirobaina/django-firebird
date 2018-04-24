@@ -103,6 +103,10 @@ class DatabaseOperations(BaseDatabaseOperations):
         sql = 'CAST(%s AS DATE)' % field_name
         return sql, []
 
+    def datetime_cast_time_sql(self, field_name, tzname):
+        sql = 'CAST(%s AS TIME)' % field_name
+        return sql, []
+
     def datetime_extract_sql(self, lookup_type, field_name, tzname):
         """
         Given a lookup_type of 'year', 'month', 'day', 'hour', 'minute' or

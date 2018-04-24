@@ -5,6 +5,7 @@ v1.11.0
 -------
 + Initial adjustments for support django 1.11 #93
 + Add DatabaseOperations.time_trunc_sql() to support TimeField truncation #87
++ Add DatabaseOperations.datetime_cast_time_sql() to support time lookup #88
 
 
 v1.10.0
