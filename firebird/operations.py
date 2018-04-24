@@ -92,12 +92,12 @@ class DatabaseOperations(BaseDatabaseOperations):
 
     def date_trunc_sql(self, lookup_type, field_name):
         if lookup_type == 'year':
-            sql = "EXTRACT(year FROM %s)||'-01-01 00:00:00'" % field_name
+            sql = "EXTRACT(year FROM %s)||'-01-01'" % field_name
         elif lookup_type == 'month':
-            sql = "EXTRACT(year FROM %s)||'-'||EXTRACT(month FROM %s)||'-01 00:00:00'" % (field_name, field_name)
+            sql = "EXTRACT(year FROM %s)||'-'||EXTRACT(month FROM %s)||'-01'" % (field_name, field_name)
         elif lookup_type == 'day':
-            sql = "EXTRACT(year FROM %s)||'-'||EXTRACT(month FROM %s)||'-'||EXTRACT(day FROM %s)||' 00:00:00'" % (field_name, field_name, field_name)
-        return "CAST(%s AS TIMESTAMP)" % sql
+            sql = "EXTRACT(year FROM %s)||'-'||EXTRACT(month FROM %s)||'-'||EXTRACT(day FROM %s)" % (field_name, field_name, field_name)
+        return "CAST(%s AS DATE)" % sql
 
     def datetime_cast_date_sql(self, field_name, tzname):
         sql = 'CAST(%s AS DATE)' % field_name
@@ -127,7 +127,7 @@ class DatabaseOperations(BaseDatabaseOperations):
         day = "EXTRACT(day FROM %s)" % field_name
         hh = "EXTRACT(hour FROM %s)" % field_name
         mm = "EXTRACT(minute FROM %s)" % field_name
-        ss = "EXTRACT(second FROM %s)" % field_name
+        ss = "TRUNC(EXTRACT(second FROM %s))" % field_name
         if lookup_type == 'year':
             sql = "%s||'-01-01 00:00:00'" % year
         elif lookup_type == 'month':
@@ -141,6 +141,28 @@ class DatabaseOperations(BaseDatabaseOperations):
         elif lookup_type == 'second':
             sql = "%s||'-'||%s||'-'||%s||' '||%s||':'||%s||':'||%s" % (year, month, day, hh, mm, ss)
         return "CAST(%s AS TIMESTAMP)" % sql, []
+
+    def time_trunc_sql(self, lookup_type, field_name):
+        """
+        Given a lookup_type of 'hour', 'minute' or 'second', returns the SQL
+        that truncates the given time field field_name to a time object with
+        only the given specificity.
+
+        In Firebird 2.5.x, extract second from a datetime or time data
+        includes millisecond as fraction, so we need to TRUNC for just
+        get the seconds part.
+        """
+        hh = "EXTRACT(hour FROM %s)" % field_name
+        mm = "EXTRACT(minute FROM %s)" % field_name
+        ss = "TRUNC(EXTRACT(second FROM %s))" % field_name
+
+        fields = {
+            'hour': "%s || ':00:00'" % hh,
+            'minute': "%s || ':' || %s || ':00'" % (hh, mm,),
+            'second': "%s || ':' || %s || ':' || %s" % (hh, mm, ss,)
+        }
+
+        return "CAST(%s AS TIME)" % fields[lookup_type]
 
     def lookup_cast(self, lookup_type, internal_type=None):
         if lookup_type in ('iexact', 'icontains', 'istartswith', 'iendswith'):
@@ -179,6 +201,11 @@ class DatabaseOperations(BaseDatabaseOperations):
         return None
 
     def get_db_converters(self, expression):
+        """
+        Get a list of functions needed to convert field data.
+        Some field types on some backends do not provide data in the correct
+        format, this is the hook for converter functions.
+        """
         converters = super(DatabaseOperations, self).get_db_converters(expression)
         internal_type = expression.output_field.get_internal_type()
         if internal_type == 'TextField':

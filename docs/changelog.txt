@@ -1,6 +1,12 @@
 Changelog
 =========
 
+v1.11.0
+-------
++ Initial adjustments for support django 1.11 #93
++ Add DatabaseOperations.time_trunc_sql() to support TimeField truncation #87
+
+
 v1.10.0
 -------
 + Schema migration: fail to alter column size with unique index #82
