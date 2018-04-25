@@ -4,6 +4,7 @@ import warnings
 from django.utils import six
 from django.utils.encoding import force_str
 from django.utils.deprecation import RemovedInDjango21Warning
+from django.db.models.indexes import Index
 from django.db.backends.base.introspection import (
     BaseDatabaseIntrospection, FieldInfo, TableInfo,
 )
@@ -105,12 +106,6 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
             items.append(FieldInfo(r[0], r[1], r[2], r[2] or 0, r[3], r[4], not (r[5] == 1), r[6]))
         return items
 
-    def _name_to_index(self, cursor, table_name):
-        """Return a dictionary of {field_name: field_index} for the given table.
-           Indexes are 0-based.
-        """
-        return dict([(d[0], i) for i, d in enumerate(self.get_table_description(cursor, table_name))])
-
     def get_key_columns(self, cursor, table_name):
         """
         Backends can override this to return a list of (column_name, referenced_table_name,
@@ -205,6 +200,8 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
          * foreign_key: (table, column) of target, or None
          * check: True if check constraint, False otherwise
          * index: True if index, False otherwise.
+         * orders: The order (ASC/DESC) defined for the columns of indexes
+         * type: The type of the index (btree, hash, etc.)
 
         Some backends may return special constraint names that don't exist
         if they don't name constraints of a certain type (e.g. SQLite)
@@ -227,7 +224,8 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
           s.RDB$FIELD_NAME AS field_name,
           i2.RDB$RELATION_NAME AS references_table,
           s2.RDB$FIELD_NAME AS references_field,
-          i.RDB$UNIQUE_FLAG
+          i.RDB$UNIQUE_FLAG,
+          i.RDB$INDEX_TYPE
         FROM RDB$INDEX_SEGMENTS s
         LEFT JOIN RDB$INDICES i ON i.RDB$INDEX_NAME = s.RDB$INDEX_NAME
         LEFT JOIN RDB$RELATION_CONSTRAINTS rc ON rc.RDB$INDEX_NAME = s.RDB$INDEX_NAME
@@ -238,11 +236,12 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         WHERE i.RDB$RELATION_NAME = %s
         ORDER BY s.RDB$FIELD_POSITION
         """ % (tbl_name,))
-        for constraint_name, constraint_type, column, other_table, other_column, unique in cursor.fetchall():
+        for constraint_name, constraint_type, column, other_table, other_column, unique, order in cursor.fetchall():
             primary_key = False
             foreign_key = None
             check = False
             index = False
+            order = 'DESC' if order else 'ASC'
             constraint = constraint_name.strip()
             constraint_type = constraint_type.strip()
             column = column.strip().lower()
@@ -264,14 +263,17 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
             if constraint not in constraints:
                 constraints[constraint] = {
                     "columns": [],
+                    "orders": [],
                     "primary_key": primary_key,
                     "unique": unique,
                     "foreign_key": foreign_key,
                     "check": check,
                     "index": index,
+                    "type": Index.suffix
                 }
             # Record the details
             constraints[constraint]['columns'].append(column)
+            constraints[constraint]['orders'].append(order)
 
         return constraints
 
@@ -292,3 +294,9 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
             order by s.rdb$field_position """ % (table, field,))
 
         return [index_name[0].strip() for index_name in cursor.fetchall()]
+
+    def _name_to_index(self, cursor, table_name):
+        """Return a dictionary of {field_name: field_index} for the given table.
+           Indexes are 0-based.
+        """
+        return dict([(d[0], i) for i, d in enumerate(self.get_table_description(cursor, table_name))])
