@@ -523,13 +523,25 @@ class DatabaseOperations(BaseDatabaseOperations):
         return six.text_type(value)
 
 
+def create_object_name(ops, obj, sufix=''):
+    name_length = ops.max_name_length() - len(sufix)
+    obj_name = utils.strip_quotes(obj)
+    return utils.truncate_name(obj_name, name_length)
+
+
 def get_autoinc_sequence_name(ops, table):
-    return ops.quote_name('%s_SQ' % utils.truncate_name(table, ops.max_name_length() - 3))
+    sufix = '_SQ'
+    table_name = create_object_name(ops, table, sufix)
+    return ops.quote_name('%s%s' % (table_name, sufix,))
 
 
 def get_autoinc_trigger_name(ops, table):
-    return ops.quote_name('%s_PK' % utils.truncate_name(table, ops.max_name_length() - 3))
+    sufix = '_PK'
+    table_name = create_object_name(ops, table, sufix)
+    return ops.quote_name('%s%s' % (table_name, sufix,))
 
 
 def get_reset_procedure_name(ops, table):
-    return ops.quote_name('%s_RS' % utils.truncate_name(table, ops.max_name_length() - 3))
+    sufix = '_RS'
+    table_name = create_object_name(ops, table, sufix)
+    return ops.quote_name('%s%s' % (table_name, sufix,))
