@@ -3,6 +3,7 @@ import datetime
 
 from django.utils import six
 from django.utils.encoding import force_str
+from django.db.models import Index
 from django.db.models.fields import AutoField
 from django.db.backends.base.schema import BaseDatabaseSchemaEditor
 from django.db.backends.base.schema import _related_non_m2m_objects
@@ -39,7 +40,9 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             WHERE UPPER(a.RDB$FIELD_NAME) = UPPER('%(column)s')
             AND UPPER(a.RDB$RELATION_NAME) = UPPER('%(table_name)s')
         """
-        value = self.execute(sql % params)
+        value = None
+        with self.connection.cursor() as cursor:
+            value = cursor.execute(sql)
         return True if value else False
 
     def add_field(self, model, field):
@@ -69,7 +72,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         self.execute(sql, params)
         # Drop the default if we need to
         # (Django usually does not use in-database defaults)
-        if not self.skip_default(field) and field.default is not None:
+        if not self.skip_default(field) and self.effective_default(field) is not None:
             params = {'table_name': model._meta.db_table, 'column': field.column}
             # Firebird need to check if the column has default definition after change it.
             if self._column_has_default(params):
@@ -81,15 +84,23 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
                 }
                 self.execute(sql)
         # Add an index, if required
-        if field.db_index and not field.unique and field.get_internal_type() != "ForeignKey":
-            index_sql = self._create_index_sql(model, [field])
-            self.deferred_sql.append(index_sql)
+        self.deferred_sql.extend(self._field_indexes_sql(model, field))
         # Add any FK constraints later
         if field.remote_field and self.connection.features.supports_foreign_keys and field.db_constraint:
             self.deferred_sql.append(self._create_fk_sql(model, field, "_fk_%(to_table)s_%(to_column)s"))
         # Reset connection if required
         if self.connection.features.connection_persists_old_columns:
             self.connection.commit()
+
+    def _field_should_be_indexed(self, model, field):
+        create_index = super(DatabaseSchemaEditor, self)._field_should_be_indexed(model, field)
+
+        # No need to create an index for ForeignKey fields except if
+        # db_constraint=False because the index from that constraint won't be
+        # created.
+        if (create_index and field.get_internal_type() == 'ForeignKey' and field.db_constraint):
+            return False
+        return create_index
 
     def _get_field_indexes(self, model, field):
         with self.connection.cursor() as cursor:
@@ -166,9 +177,15 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
                 ))
             for constraint_name in constraint_names:
                 self.execute(self._delete_constraint_sql(self.sql_delete_unique, model, constraint_name))
-        # Drop incoming FK constraints if we're a primary key and things are going
-        # to change.
-        if old_field.primary_key and new_field.primary_key and old_type != new_type:
+        # Drop incoming FK constraints if the field is a primary key or unique,
+        # which might be a to_field target, and things are going to change.
+        drop_foreign_keys = (
+            (
+                (old_field.primary_key and new_field.primary_key) or
+                (old_field.unique and new_field.unique)
+            ) and old_type != new_type
+        )
+        if drop_foreign_keys:
             # '_meta.related_field' also contains M2M reverse fields, these
             # will be filtered out
             for _old_rel, new_rel in _related_non_m2m_objects(old_field, new_field):
@@ -178,24 +195,40 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
                 for fk_name in rel_fk_names:
                     self.execute(self._delete_constraint_sql(self.sql_delete_fk, new_rel.related_model, fk_name))
         # Removed an index? (no strict check, as multiple indexes are possible)
-        if (old_field.db_index and not new_field.db_index and
-                not old_field.unique and not
-                (not new_field.unique and old_field.unique)):
+        # Remove indexes if db_index switched to False or a unique constraint
+        # will now be used in lieu of an index. The following lines from the
+        # truth table show all True cases; the rest are False:
+        #
+        # old_field.db_index | old_field.unique | new_field.db_index | new_field.unique
+        # ------------------------------------------------------------------------------
+        # True               | False            | False              | False
+        # True               | False            | False              | True
+        # True               | False            | True               | True
+        if old_field.db_index and not old_field.unique and (not new_field.db_index or new_field.unique):
             # Find the index for this field
-            index_names = self._constraint_names(model, [old_field.column], index=True)
+            meta_index_names = {index.name for index in model._meta.indexes}
+            # Retrieve only BTREE indexes since this is what's created with
+            # db_index=True.
+            index_names = self._constraint_names(model, [old_field.column], index=True, type_=Index.suffix)
             for index_name in index_names:
+                if index_name in meta_index_names:
+                    # The only way to check if an index was created with
+                    # db_index=True or with Index(['field'], name='foo')
+                    # is to look at its name (refs #28053).
+                    continue
                 self.execute(self._delete_constraint_sql(self.sql_delete_index, model, index_name))
         # Change check constraints?
-        if old_db_params['check'] != new_db_params['check'] and old_db_params['check']:
-            constraint_names = self._constraint_names(model, [old_field.column], check=True)
-            if strict and len(constraint_names) != 1:
-                raise ValueError("Found wrong number (%s) of check constraints for %s.%s" % (
-                    len(constraint_names),
-                    model._meta.db_table,
-                    old_field.column,
-                ))
-            for constraint_name in constraint_names:
-                self.execute(self._delete_constraint_sql(self.sql_delete_check, model, constraint_name))
+        if self.connection.features.supports_column_check_constraints:
+            if old_db_params['check'] != new_db_params['check'] and old_db_params['check']:
+                constraint_names = self._constraint_names(model, [old_field.column], check=True)
+                if strict and len(constraint_names) != 1:
+                    raise ValueError("Found wrong number (%s) of check constraints for %s.%s" % (
+                        len(constraint_names),
+                        model._meta.db_table,
+                        old_field.column,
+                    ))
+                for constraint_name in constraint_names:
+                    self.execute(self._delete_constraint_sql(self.sql_delete_check, model, constraint_name))
         # Have they renamed the column?
         if old_field.column != new_field.column:
             self.execute(self._rename_field_sql(model._meta.db_table, old_field, new_field, new_type))
@@ -306,11 +339,20 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             old_field.primary_key and not new_field.primary_key and new_field.unique
         ):
             self.execute(self._create_unique_sql(model, [new_field.column]))
-        # Added an index?
-        if (not old_field.db_index and new_field.db_index and
-                not new_field.unique and not
-                (not old_field.unique and new_field.unique)):
-            self.execute(self._create_index_sql(model, [new_field], suffix="_uniq"))
+        # Added an index? Add an index if db_index switched to True or a unique
+        # constraint will no longer be used in lieu of an index. The following
+        # lines from the truth table show all True cases; the rest are False:
+        #
+        # old_field.db_index | old_field.unique | new_field.db_index | new_field.unique
+        # ------------------------------------------------------------------------------
+        # False              | False            | True               | False
+        # False              | True             | True               | False
+        # True               | True             | True               | False
+        if (not old_field.db_index or old_field.unique) and new_field.db_index and not new_field.unique:
+            # If the new field is a foreign key not index is necessary because Firebird create it implicitly
+            # This behavior is related to Github issue #70
+            # original -->  self.execute(self._create_index_sql(model, [new_field]))
+            self.deferred_sql.extend(self._field_indexes_sql(model, new_field))
         # Type alteration on primary key? Then we need to alter the column
         # referring to us.
         rels_to_update = []
@@ -361,9 +403,9 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
                 new_field.db_constraint):
             self.execute(self._create_fk_sql(model, new_field, "_fk_%(to_table)s_%(to_column)s"))
         # Rebuild FKs that pointed to us if we previously had to drop them
-        if old_field.primary_key and new_field.primary_key and old_type != new_type:
+        if drop_foreign_keys:
             for rel in new_field.model._meta.related_objects:
-                if not rel.many_to_many:
+                if _is_relevant_relation(rel, new_field) and rel.field.db_constraint:
                     self.execute(self._create_fk_sql(rel.related_model, rel.field, "_fk"))
         # Does it have check constraints we need to add?
         if old_db_params['check'] != new_db_params['check'] and new_db_params['check']:
@@ -389,14 +431,6 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         # Reset connection if required
         if self.connection.features.connection_persists_old_columns:
             self.connection.commit()
-
-    def _model_indexes_sql(self, model):
-        for field in model._meta.local_fields:
-            if field.db_index and not field.unique and field.get_internal_type() == "ForeignKey":
-                # Temporary setting db_index to False (in memory) to disable
-                # index creation for FKs (index automatically created by FirebirdSQL)
-                field.db_index = False
-        return super(DatabaseSchemaEditor, self)._model_indexes_sql(model)
 
     def prepare_default(self, value):
         if isinstance(value, bool):

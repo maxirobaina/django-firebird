@@ -56,7 +56,7 @@ class SchemaTests(TransactionTestCase):
     # Important!!  this order of models is necessary for model delete without errors
     models = [
         Book, BookWeak, BookWithLongName, BookWithO2O, BookWithSlug,
-        Author, AuthorWithDefaultHeight, AuthorWithEvenLongerName, IntegerPK, Node, 
+        Author, AuthorWithDefaultHeight, AuthorWithEvenLongerName, IntegerPK, Node,
         Note, Tag, TagIndexed, TagM2MTest, TagUniqueRename, Thing, UniqueTest,
     ]
 
@@ -97,6 +97,7 @@ class SchemaTests(TransactionTestCase):
             for model in itertools.chain(SchemaTests.models, self.local_models):
                 tbl = converter(model._meta.db_table)
                 if tbl in table_names:
+                    print("DELETING MODEL...", model)
                     editor.delete_model(model)
                     table_names.remove(tbl)
             connection.enable_constraint_checking()
@@ -929,7 +930,10 @@ class SchemaTests(TransactionTestCase):
             (Author._meta.db_table, Author._meta.pk.column),
         )
         # The index on ForeignKey is replaced with a unique constraint for OneToOneField.
-        self.assertEqual(counts, {'fks': expected_fks, 'uniques': 1, 'indexes': 0})
+        # Previous affirmation is False in Firebird.
+        # Firebird always create an index for a foreign key plus an index for a unique constraints
+        # on the foreign key field
+        self.assertEqual(counts, {'fks': expected_fks, 'uniques': 1, 'indexes': 1})
 
     def test_alter_field_fk_keeps_index(self):
         with connection.schema_editor() as editor:
@@ -972,7 +976,7 @@ class SchemaTests(TransactionTestCase):
             BookWithO2O._meta.get_field('author').column,
             (Author._meta.db_table, Author._meta.pk.column),
         )
-        self.assertEqual(counts, {'fks': expected_fks, 'uniques': 1, 'indexes': 0})
+        self.assertEqual(counts, {'fks': expected_fks, 'uniques': 1, 'indexes': 1})
 
         old_field = BookWithO2O._meta.get_field('author')
         new_field = ForeignKey(Author, CASCADE)
@@ -1000,7 +1004,7 @@ class SchemaTests(TransactionTestCase):
             BookWithO2O._meta.get_field('author').column,
             (Author._meta.db_table, Author._meta.pk.column),
         )
-        self.assertEqual(counts, {'fks': expected_fks, 'uniques': 1, 'indexes': 0})
+        self.assertEqual(counts, {'fks': expected_fks, 'uniques': 1, 'indexes': 1})
 
         old_field = BookWithO2O._meta.get_field('author')
         # on_delete changed from CASCADE.
@@ -1015,8 +1019,9 @@ class SchemaTests(TransactionTestCase):
             (Author._meta.db_table, Author._meta.pk.column),
         )
         # The unique constraint remains.
-        self.assertEqual(counts, {'fks': expected_fks, 'uniques': 1, 'indexes': 0})
+        self.assertEqual(counts, {'fks': expected_fks, 'uniques': 1, 'indexes': 1})
 
+    @unittest.skipIf(connection.vendor == 'firebird', "Firebird doesn't support table rename")
     def test_alter_db_table_case(self):
         # Create the table
         with connection.schema_editor() as editor:
@@ -1671,6 +1676,7 @@ class SchemaTests(TransactionTestCase):
             ),
         )
 
+    @unittest.skipIf(connection.vendor == 'firebird', "Firebird doesn't support table rename")
     def test_db_table(self):
         """
         Tests renaming of the table
