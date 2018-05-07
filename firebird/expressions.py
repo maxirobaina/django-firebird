@@ -28,9 +28,9 @@ def firebird_fix_value_expr(self, compiler, connection):
     sql, params = self.as_sql(compiler, connection)
 
     if len(params) > 0:
-        print "params:", params, type(params[0])
+        print("params:", params, type(params[0]))
     else:
-        print "params:", params, type(params)
+        print("params:", params, type(params))
 
     _params = tuple(quote_value(p) for p in params)
     if _params:
