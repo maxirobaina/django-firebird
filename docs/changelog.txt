@@ -8,6 +8,7 @@ v1.11.0
 + Add DatabaseOperations.datetime_cast_time_sql() to support time lookup #88
 + DatabaseIntrospection.get_constraints() enhanced due a get_indexes() deprecation #89
 + DatabaseIntrospection.get_constraints() method should include an 'orders' key #90
++ NameError: global name '_is_relevant_relation' is not defined #99
 * Improvements in schema migration
 
 
