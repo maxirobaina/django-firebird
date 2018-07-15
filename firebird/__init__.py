@@ -1,6 +1,6 @@
 from .version import get_version
 
-VERSION = (1, 11, 0, 'alpha', 2)
+VERSION = (1, 11, 0, 'beta', 1)
 
 __version__ = get_version(VERSION)
 
