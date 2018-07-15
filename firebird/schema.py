@@ -6,7 +6,7 @@ from django.utils.encoding import force_str
 from django.db.models import Index
 from django.db.models.fields import AutoField
 from django.db.backends.base.schema import BaseDatabaseSchemaEditor
-from django.db.backends.base.schema import _related_non_m2m_objects
+from django.db.backends.base.schema import _related_non_m2m_objects, _is_relevant_relation
 
 logger = logging.getLogger('django.db.backends.schema')
 
