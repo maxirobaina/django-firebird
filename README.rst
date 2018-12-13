@@ -101,19 +101,3 @@ Code and issues is in GitHub:
 We also have a mailing list:
 
     http://groups.google.com/group/django-firebird-dev
-
-
-Legacy driver
--------------
-
-Why the change from kinterbasdb to fdb?
-
-If you want to know more about the differences between *fdb* and *kinterbasdb* you can look at:
-
-http://thread.gmane.org/gmane.comp.db.firebird.python/185/focus=187
-
-http://pythonhosted.org//fdb/differences-from-kdb.html
-
-If you still use *kinterbasdb*, the original google code repository has an updated django-firebird 1.4.x LTS version.
-
-https://github.com/mariuz/django-firebird-1.4
