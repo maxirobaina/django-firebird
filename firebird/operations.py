@@ -9,6 +9,7 @@ from django.utils.functional import cached_property
 from django.utils import six
 from django.utils import timezone
 from django.utils.encoding import force_bytes, force_text
+from fdb.ibase import charset_map
 
 from .base import Database
 
@@ -230,7 +231,14 @@ class DatabaseOperations(BaseDatabaseOperations):
         if isinstance(value, Database.BlobReader):
             value = value.read()
         if value is not None:
-            value = force_text(value)
+            db_charset = None
+            if 'charset' in connection.get_connection_params():
+                if connection.get_connection_params()['charset'] in charset_map:
+                    db_charset = charset_map[connection.get_connection_params()['charset']]
+            if db_charset:
+                value = force_text(value, encoding=charset, errors='replace')
+            else:
+                value = force_text(value)
         return value
 
     def convert_binaryfield_value(self, value, expression, connection, context):
