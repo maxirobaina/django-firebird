@@ -236,7 +236,7 @@ class DatabaseOperations(BaseDatabaseOperations):
                 if connection.get_connection_params()['charset'] in charset_map:
                     db_charset = charset_map[connection.get_connection_params()['charset']]
             if db_charset:
-                value = force_text(value, encoding=charset, errors='replace')
+                value = force_text(value, encoding=db_charset, errors='replace')
             else:
                 value = force_text(value)
         return value
