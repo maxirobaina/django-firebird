@@ -173,13 +173,15 @@ class DatabaseOperations(BaseDatabaseOperations):
             return "UPPER(%s)"
         return "%s"
 
-    def for_update_sql(self, nowait=False):
+    def for_update_sql(self, nowait=False, skip_locked=False, of=()):
         """
         Returns the FOR UPDATE SQL clause to lock rows for an update operation.
         """
         # The nowait param depends on transaction setting
         # return 'FOR UPDATE WITH LOCK'
-        return 'FOR UPDATE'
+        return 'FOR UPDATE%s' % (
+            ' OF %s' % ', '.join(of) if of else '',
+        )
 
     def fulltext_search_sql(self, field_name):
         # We use varchar for TextFields so this is possible
