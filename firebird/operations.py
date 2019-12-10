@@ -180,7 +180,7 @@ class DatabaseOperations(BaseDatabaseOperations):
         # The nowait param depends on transaction setting
         # return 'FOR UPDATE WITH LOCK'
         return 'FOR UPDATE%s' % (
-            ' OF %s' % ', '.join(of) if of else '',
+            ' OF %s' % ', '.join(of) if of else ''
         )
 
     def fulltext_search_sql(self, field_name):
