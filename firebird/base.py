@@ -3,6 +3,7 @@ Firebird database backend for Django.
 """
 
 import sys
+import six
 
 try:
     import fdb as Database
@@ -17,8 +18,6 @@ from django.db.backends.base.base import BaseDatabaseWrapper
 
 from django.utils.encoding import smart_str
 from django.utils.functional import cached_property
-from django.utils import six
-
 from .operations import DatabaseOperations
 from .features import DatabaseFeatures
 from .client import DatabaseClient

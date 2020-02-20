@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 
 from django.conf import settings
 from django.db import connection, DatabaseError
-from django.db.models import F, DateField, DateTimeField, IntegerField, TimeField
+from django.db.models import F, DateField, DateTimeField, IntegerField, TimeField, CASCADE
 from django.db.models.fields.related import ForeignKey
 from django.db.models.functions import (
     Extract, ExtractDay, ExtractHour, ExtractMinute, ExtractMonth,
@@ -13,7 +13,7 @@ from django.db.models.functions import (
     TruncYear,
 )
 from django.test import TestCase, TransactionTestCase, override_settings
-
+from django.utils import timezone
 
 from .models import BigS, FieldsTest, Foo, Bar, DTModel
 
@@ -144,7 +144,7 @@ class DatabaseSchemaTests(TransactionTestCase):
         self.assertEqual(index_sql, [])
 
     def test_fk_index_creation(self):
-        new_field = ForeignKey(Foo)
+        new_field = ForeignKey(Foo, on_delete=CASCADE)
         new_field.set_attributes_from_name(None)
         with connection.schema_editor() as editor:
             editor.add_field(

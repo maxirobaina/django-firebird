@@ -2,12 +2,19 @@ from __future__ import unicode_literals
 
 from unittest import skipUnless
 
+import django
+import mock
 from django.db import connection
 from django.db.models import Index
 from django.db.utils import DatabaseError
-from django.test import TransactionTestCase, mock, skipUnlessDBFeature
+from django.test import TransactionTestCase, skipUnlessDBFeature
 from django.test.utils import ignore_warnings
-from django.utils.deprecation import RemovedInDjango21Warning
+
+if (django.VERSION[0]==2 and django.VERSION[1] < 1) or django.VERSION[0] < 2:
+    # if django.version < 2.1
+    from django.utils.deprecation import RemovedInDjango21Warning
+else:
+    RemovedInDjango21Warning = None
 
 from .models import Article, ArticleReporter, City, District, Reporter
 

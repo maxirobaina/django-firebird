@@ -3,6 +3,8 @@ from __future__ import unicode_literals
 import sys
 import threading
 import time
+import six
+
 from unittest import skipIf, skipUnless
 
 from django.db import (
@@ -12,8 +14,6 @@ from django.db import (
 from django.test import (
     TransactionTestCase, skipIfDBFeature, skipUnlessDBFeature,
 )
-from django.utils import six
-
 from .models import Reporter
 
 

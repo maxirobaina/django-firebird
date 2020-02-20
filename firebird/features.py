@@ -48,6 +48,10 @@ class DatabaseFeatures(BaseDatabaseFeatures):
     # by returning the type used to store duration field?
     supports_temporal_subtraction = False
 
+    supports_microsecond_precision = False
+
+    autocommits_when_autocommit_is_off = True
+
     @cached_property
     def supports_transactions(self):
         return True

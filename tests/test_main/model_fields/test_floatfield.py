@@ -21,7 +21,7 @@ class TestFloatField(TestCase):
         instance.size = instance
         msg = (
             'Tried to update field model_fields.FloatModel.size with a model '
-            'instance, <FloatModel: FloatModel object>. Use a value '
+            'instance, <FloatModel: FloatModel object (1)>. Use a value '
             'compatible with FloatField.'
         )
         with transaction.atomic():

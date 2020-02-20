@@ -1,7 +1,8 @@
 # -*- utf-8 -*-
+import six
 
 from django.db import models
-from django.utils.encoding import python_2_unicode_compatible
+from six import python_2_unicode_compatible
 
 
 class FieldsTest(models.Model):
@@ -20,7 +21,7 @@ class Foo(models.Model):
 
 class Bar(models.Model):
     b = models.CharField(max_length=10)
-    a = models.ForeignKey(Foo, related_name=b'bars')
+    a = models.ForeignKey(Foo, related_name='bars', on_delete=models.CASCADE)
 
 
 @python_2_unicode_compatible

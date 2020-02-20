@@ -1,14 +1,18 @@
+import decimal
 import uuid
 import datetime
+
+import django
+import six
 
 from django.conf import settings
 from django.db.backends.base.operations import BaseDatabaseOperations
 from django.db.backends import utils
 from django.db.utils import DatabaseError
 from django.utils.functional import cached_property
-from django.utils import six
 from django.utils import timezone
 from django.utils.encoding import force_bytes, force_text
+from fdb.ibase import charset_map
 
 from .base import Database
 
@@ -24,6 +28,8 @@ class DatabaseOperations(BaseDatabaseOperations):
         'BigIntegerField': (Database.LONG_MIN, Database.LONG_MAX),
         'PositiveSmallIntegerField': (0, Database.SHRT_MAX),
         'PositiveIntegerField': (0, Database.INT_MAX),
+        'AutoField': (Database.INT_MIN, Database.INT_MAX),
+        'BigAutoField': (Database.LONG_MIN, Database.LONG_MAX),
     }
 
     def __init__(self, connection, *args, **kwargs):
@@ -68,7 +74,7 @@ class DatabaseOperations(BaseDatabaseOperations):
         return sequence_sql, trigger_sql
 
     def check_aggregate_support(self, aggregate_func):
-        from django.db.models.sql.aggregates import Avg
+        from django.db.models.aggregates import Avg
 
         INVALID = ('STDDEV_SAMP', 'STDDEV_POP', 'VAR_SAMP', 'VAR_POP')
         if aggregate_func.sql_function in INVALID:
@@ -101,11 +107,19 @@ class DatabaseOperations(BaseDatabaseOperations):
 
     def datetime_cast_date_sql(self, field_name, tzname):
         sql = 'CAST(%s AS DATE)' % field_name
-        return sql, []
+        ver = django.get_version()
+        if ver < '3.0.0':
+            return sql, []
+        else:
+            return sql
 
     def datetime_cast_time_sql(self, field_name, tzname):
         sql = 'CAST(%s AS TIME)' % field_name
-        return sql, []
+        ver = django.get_version()
+        if ver < '3.0.0':
+            return sql, []
+        else:
+            return sql
 
     def datetime_extract_sql(self, lookup_type, field_name, tzname):
         """
@@ -117,7 +131,11 @@ class DatabaseOperations(BaseDatabaseOperations):
             sql = "EXTRACT(WEEKDAY FROM %s) + 1" % field_name
         else:
             sql = "EXTRACT(%s FROM %s)" % (lookup_type.upper(), field_name)
-        return sql, []
+        ver = django.get_version()
+        if ver < '3.0.0':
+            return sql, []
+        else:
+            return sql
 
     def datetime_trunc_sql(self, lookup_type, field_name, tzname):
         """
@@ -144,7 +162,11 @@ class DatabaseOperations(BaseDatabaseOperations):
             sql = "%s||'-'||%s||'-'||%s||' '||%s||':'||%s||':00'" % (year, month, day, hh, mm)
         elif lookup_type == 'second':
             sql = "%s||'-'||%s||'-'||%s||' '||%s||':'||%s||':'||%s" % (year, month, day, hh, mm, ss)
-        return "CAST(%s AS TIMESTAMP)" % sql, []
+        ver = django.get_version()
+        if ver < '3.0.0':
+            return "CAST(%s AS TIMESTAMP)" % sql, []
+        else:
+            return "CAST(%s AS TIMESTAMP)" % sql
 
     def time_trunc_sql(self, lookup_type, field_name):
         """
@@ -228,35 +250,42 @@ class DatabaseOperations(BaseDatabaseOperations):
             converters.append(self.convert_uuidfield_value)
         return converters
 
-    def convert_textfield_value(self, value, expression, connection, context):
+    def convert_textfield_value(self, value, expression, connection):
         if isinstance(value, Database.BlobReader):
             value = value.read()
         if value is not None:
-            value = force_text(value)
+            db_charset = None
+            if 'charset' in connection.get_connection_params():
+                if connection.get_connection_params()['charset'] in charset_map:
+                    db_charset = charset_map[connection.get_connection_params()['charset']]
+            if db_charset:
+                value = force_text(value, encoding=db_charset, errors='replace')
+            else:
+                value = force_text(value)
         return value
 
-    def convert_binaryfield_value(self, value, expression, connection, context):
+    def convert_binaryfield_value(self, value, expression, connection):
         if value is not None:
             value = force_bytes(value)
         return value
 
-    def convert_booleanfield_value(self, value, expression, connection, context):
+    def convert_booleanfield_value(self, value, expression, connection):
         if value in (0, 1):
             value = bool(value)
         return value
 
-    def convert_decimalfield_value(self, value, expression, connection, context):
+    def convert_decimalfield_value(self, value, expression, connection):
         field = expression.field
         val = utils.format_number(value, field.max_digits, field.decimal_places)
         value = utils.typecast_decimal(val)
         return value
 
-    def convert_ipfield_value(self, value, expression, connection, context):
+    def convert_ipfield_value(self, value, expression, connection):
         if value is not None:
             value = value.strip()
         return value
 
-    def convert_uuidfield_value(self, value, expression, connection, context):
+    def convert_uuidfield_value(self, value, expression, connection):
         if value is not None:
             value = uuid.UUID(value)
         return value
@@ -309,7 +338,7 @@ class DatabaseOperations(BaseDatabaseOperations):
         elif isinstance(timedelta, six.string_types):
             if timedelta.isdigit():
                 unit = 'second'
-                value = "(%s * %s) / 1000000" % (value, sign,)
+                value = "(%s * %s) / 1000000" % (timedelta, sign,)
             else:
                 return super(DatabaseOperations, self).combine_duration_expression(connector, sub_expressions)
         else:

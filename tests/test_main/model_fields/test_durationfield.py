@@ -69,6 +69,10 @@ class TestValidation(SimpleTestCase):
 
     def test_invalid_string(self):
         field = models.DurationField()
+        field.error_messages = default_error_messages = {
+            'invalid': '\'%(value)s\' value has an invalid format. It must be in '
+                        '[DD] [HH:[MM:]]ss[.uuuuuu] format.'
+        }
         with self.assertRaises(exceptions.ValidationError) as cm:
             field.clean('not a datetime', None)
         self.assertEqual(cm.exception.code, 'invalid')

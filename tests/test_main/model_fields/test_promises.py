@@ -2,6 +2,8 @@ from __future__ import unicode_literals
 
 import datetime
 import unittest
+import six
+
 from decimal import Decimal
 
 from django.db.models.fields import (
@@ -14,7 +16,6 @@ from django.db.models.fields import (
 )
 from django.db.models.fields.files import FileField, ImageField
 from django.test import SimpleTestCase
-from django.utils import six
 from django.utils.functional import lazy
 
 

@@ -3,7 +3,7 @@ from django.db.models.fields.related import (
     RECURSIVE_RELATIONSHIP_CONSTANT, ManyToManyDescriptor, ManyToManyField,
     ManyToManyRel, RelatedField, create_many_to_many_intermediary_model,
 )
-from django.utils.functional import curry
+from toolz import curry
 
 
 class CustomManyToManyField(RelatedField):

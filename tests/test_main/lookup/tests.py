@@ -491,7 +491,7 @@ class LookupTests(TestCase):
         except FieldError as ex:
             self.assertEqual(
                 str(ex), "Unsupported lookup 'starts' for CharField "
-                "or join on the field not permitted.")
+                "or join on the field not permitted, perhaps you meant startswith or istartswith?")
 
     def test_relation_nested_lookup_error(self):
         # An invalid nested lookup on a related field raises a useful error.

@@ -1,6 +1,7 @@
 import os
 import tempfile
 import uuid
+import six
 
 from django.contrib.contenttypes.fields import (
     GenericForeignKey, GenericRelation,
@@ -12,7 +13,7 @@ from django.db.models.fields.files import ImageField, ImageFieldFile
 from django.db.models.fields.related import (
     ForeignKey, ForeignObject, ManyToManyField, OneToOneField,
 )
-from django.utils import six
+from django.core import validators
 
 try:
     from PIL import Image
@@ -31,7 +32,7 @@ def get_foo():
 
 class Bar(models.Model):
     b = models.CharField(max_length=10)
-    a = models.ForeignKey(Foo, models.CASCADE, default=get_foo, related_name=b'bars')
+    a = models.ForeignKey(Foo, models.CASCADE, default=get_foo, related_name='bars')
 
 
 class Whiz(models.Model):
@@ -164,7 +165,7 @@ class VerboseNameField(models.Model):
     field1 = models.BigIntegerField("verbose field1")
     field2 = models.BooleanField("verbose field2", default=False)
     field3 = models.CharField("verbose field3", max_length=10)
-    field4 = models.CommaSeparatedIntegerField("verbose field4", max_length=99)
+    field4 = models.CharField("verbose field4", max_length=99, validators=[validators.validate_comma_separated_integer_list])
     field5 = models.DateField("verbose field5")
     field6 = models.DateTimeField("verbose field6")
     field7 = models.DecimalField("verbose field7", max_digits=6, decimal_places=1)
@@ -323,7 +324,7 @@ class AllFieldsModel(models.Model):
     binary = models.BinaryField()
     boolean = models.BooleanField(default=False)
     char = models.CharField(max_length=10)
-    csv = models.CommaSeparatedIntegerField(max_length=10)
+    csv = models.CharField(max_length=10, validators=[validators.validate_comma_separated_integer_list])
     date = models.DateField()
     datetime = models.DateTimeField()
     decimal = models.DecimalField(decimal_places=2, max_digits=2)

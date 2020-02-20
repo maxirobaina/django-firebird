@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
+import six
 
 from django.core.exceptions import ValidationError
 from django.test import TestCase
-from django.utils import six
-
 from .models import DataModel
 
 

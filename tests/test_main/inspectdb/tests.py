@@ -7,7 +7,7 @@ from unittest import skipUnless
 from django.core.management import call_command
 from django.db import connection
 from django.test import TestCase, skipUnlessDBFeature
-from django.utils.six import PY3, StringIO
+from six import PY3, StringIO
 
 from .models import ColumnTypes
 

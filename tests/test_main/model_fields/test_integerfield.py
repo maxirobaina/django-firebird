@@ -1,9 +1,9 @@
+import six
+
 from django.core import validators
 from django.core.exceptions import ValidationError
 from django.db import connection, models
 from django.test import SimpleTestCase, TestCase
-from django.utils import six
-
 from .models import (
     BigIntegerModel, IntegerModel, PositiveIntegerModel,
     PositiveSmallIntegerModel, SmallIntegerModel,

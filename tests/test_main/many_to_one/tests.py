@@ -1,18 +1,26 @@
 import datetime
+import six
+
 from copy import deepcopy
 
+import django
 from django.core.exceptions import FieldError, MultipleObjectsReturned
 from django.db import models, transaction
 from django.db.utils import IntegrityError
 from django.test import TestCase, ignore_warnings
-from django.utils import six
-from django.utils.deprecation import RemovedInDjango20Warning
+# from django.utils.deprecation import RemovedInDjango20Warning
 from django.utils.translation import ugettext_lazy
 
 from .models import (
     Article, Category, Child, City, District, First, Parent, Record, Relation,
     Reporter, School, Student, Third, ToFieldChild,
 )
+
+if django.VERSION[0] < 2:
+    # if django.version < 2.0
+    from django.utils.deprecation import RemovedInDjango20Warning
+else:
+    RemovedInDjango21Warning = None
 
 
 class ManyToOneTests(TestCase):

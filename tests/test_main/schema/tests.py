@@ -1,6 +1,7 @@
 import datetime
 import itertools
 import unittest
+import mock
 from copy import copy
 
 from django.db import (
@@ -19,9 +20,9 @@ from django.db.models.fields.related import (
 from django.db.models.indexes import Index
 from django.db.transaction import TransactionManagementError, atomic
 from django.test import (
-    TransactionTestCase, mock, skipIfDBFeature, skipUnlessDBFeature,
+    TransactionTestCase, skipIfDBFeature, skipUnlessDBFeature,
 )
-from django.test.utils import CaptureQueriesContext, isolate_apps, patch_logger
+from django.test.utils import CaptureQueriesContext, isolate_apps
 from django.utils import timezone
 
 from .fields import (
@@ -1483,7 +1484,7 @@ class SchemaTests(TransactionTestCase):
         new_field = CharField(max_length=255, unique=True)
         new_field.model = Author
         new_field.set_attributes_from_name('name')
-        with patch_logger('django.db.backends.schema', 'debug') as logger_calls:
+        with unittest.TestCase.assertLogs('django.db.backends.schema', 'debug') as logger_calls:
             with connection.schema_editor() as editor:
                 editor.alter_field(Author, Author._meta.get_field('name'), new_field)
             # One SQL statement is executed to alter the field.
@@ -1516,7 +1517,7 @@ class SchemaTests(TransactionTestCase):
         new_field = SlugField(max_length=75, unique=True)
         new_field.model = Tag
         new_field.set_attributes_from_name('slug')
-        with patch_logger('django.db.backends.schema', 'debug') as logger_calls:
+        with unittest.TestCase.assertLogs('django.db.backends.schema', 'debug') as logger_calls:
             with connection.schema_editor() as editor:
                 editor.alter_field(Tag, Tag._meta.get_field('slug'), new_field)
             # One SQL statement is executed to alter the field.

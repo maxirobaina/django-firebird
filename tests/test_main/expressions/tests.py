@@ -2,6 +2,8 @@ from __future__ import unicode_literals
 
 import datetime
 import uuid
+import six
+
 from copy import deepcopy
 
 from django.core.exceptions import FieldError
@@ -19,8 +21,6 @@ from django.db.models.functions import (
 )
 from django.test import TestCase, skipIfDBFeature, skipUnlessDBFeature
 from django.test.utils import Approximate
-from django.utils import six
-
 from .models import UUID, Company, Employee, Experiment, Number, Time
 
 

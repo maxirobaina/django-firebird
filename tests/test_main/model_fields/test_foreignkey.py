@@ -1,3 +1,5 @@
+import six
+
 from decimal import Decimal
 
 from django.apps import apps
@@ -5,8 +7,6 @@ from django.core import checks
 from django.db import models
 from django.test import TestCase, skipIfDBFeature
 from django.test.utils import isolate_apps
-from django.utils import six
-
 from .models import Bar, FkToChar, Foo, PrimaryKeyCharModel
 
 

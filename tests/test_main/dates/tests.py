@@ -1,11 +1,10 @@
 from __future__ import unicode_literals
 
 import datetime
+import six
 
 from django.core.exceptions import FieldError
 from django.test import TestCase
-from django.utils import six
-
 from .models import Article, Category, Comment
 
 
@@ -105,7 +104,7 @@ class DatesTests(TestCase):
         six.assertRaisesRegex(
             self,
             AssertionError,
-            "'kind' must be one of 'year', 'month' or 'day'.",
+            "'kind' must be one of 'year', 'month', 'week', or 'day'.",
             Article.objects.dates,
             "pub_date",
             "bad_kind",
