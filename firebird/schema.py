@@ -8,6 +8,8 @@ from django.db.models.fields import AutoField
 from django.db.backends.base.schema import BaseDatabaseSchemaEditor
 from django.db.backends.base.schema import _related_non_m2m_objects, _is_relevant_relation
 
+from fdb import TransactionContext
+
 logger = logging.getLogger('django.db.backends.schema')
 
 
@@ -21,12 +23,21 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
     sql_create_fk = "ALTER TABLE %(table)s ADD CONSTRAINT %(name)s FOREIGN KEY (%(column)s) REFERENCES %(to_table)s (%(to_column)s)"
 
     def _alter_column_set_null(self, table_name, column_name, is_null):
-        sql = """
-            UPDATE RDB$RELATION_FIELDS SET RDB$NULL_FLAG = %(null_flag)s
-            WHERE RDB$FIELD_NAME = '%(column)s'
-            AND RDB$RELATION_NAME = '%(table_name)s'
-        """
-        null_flag = 'NULL' if is_null else '1'
+        engine_ver = str(self.connection.connection.engine_version).split('.')
+        if engine_ver and len(engine_ver) > 0 and int(engine_ver[0]) >= 3:
+            sql = """
+                ALTER TABLE \"%(table_name)s\" 
+                ALTER \"%(column)s\" 
+                %(null_flag)s NOT NULL
+            """
+            null_flag = 'DROP' if is_null else 'SET'
+        else:
+            sql = """
+                UPDATE RDB$RELATION_FIELDS SET RDB$NULL_FLAG = %(null_flag)s
+                WHERE RDB$FIELD_NAME = '%(column)s'
+                AND RDB$RELATION_NAME = '%(table_name)s'
+            """
+            null_flag = 'NULL' if is_null else '1'
         return sql % {
             'null_flag': null_flag,
             'column': column_name.upper(),
@@ -39,11 +50,16 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             FROM RDB$RELATION_FIELDS a
             WHERE UPPER(a.RDB$FIELD_NAME) = UPPER('%(column)s')
             AND UPPER(a.RDB$RELATION_NAME) = UPPER('%(table_name)s')
-        """
-        value = None
+        """ % {
+            'column': params['column'],
+            'table_name': params['table_name']
+        }
+
+        res = None
         with self.connection.cursor() as cursor:
-            value = cursor.execute(sql)
-        return True if value else False
+            cursor.execute(sql)
+            res = cursor.fetchone()
+        return True if res else False
 
     def add_field(self, model, field):
         """
@@ -125,6 +141,39 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         super(DatabaseSchemaEditor, self).remove_field(model, field)
 
     def _alter_column_type_sql(self, table, old_field, new_field, new_type):
+        # The Firebird does not support direct type change to BLOB,
+        # therefore this action is divided into 4 stages.
+        # Change through temp column.
+        alter_blob_actions = []
+        if new_type == self.connection.data_types['TextField'] or new_type == self.connection.data_types['BinaryField']:
+            alter_blob_actions.append(
+                (self.sql_create_column % {
+                "table": self.quote_name(table),
+                "column": self.quote_name("mirgate_temp_" + new_field.column),
+                "definition": new_type,
+                }, [])
+            )
+            alter_blob_actions.append(
+                (self.sql_update_with_default % {
+                "table": self.quote_name(table),
+                "column": self.quote_name("mirgate_temp_" + new_field.column),
+                "default": self.quote_name(old_field.column),
+                }, [])
+            )
+            alter_blob_actions.append(
+                (self.sql_delete_column % {
+                    "table": self.quote_name(table),
+                    "column": self.quote_name(old_field.column),
+                }, [])
+            )
+            alter_blob_actions.append(
+                (self.sql_rename_column % {
+                    "table": self.quote_name(table),
+                    "old_column": self.quote_name("mirgate_temp_" + new_field.column),
+                    "new_column": self.quote_name(new_field.column),
+                }, [])
+            )
+
         if old_field.unique:
             # In Firebird, alter a column type with a unique constraint will fails
             # SQL Message : -607, Engine Code : 335544351
@@ -141,12 +190,15 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
                 params = {"table": table, "name": name, "columns": self.quote_name(column)}
                 extra_sql.append((self.sql_create_unique % params, [],))
 
-            # alter column type
-            params = {"column": self.quote_name(new_field.column), "type": new_type}
-            alter_sql = self.sql_alter_column_type % params
-            return ((alter_sql, [],), extra_sql,)
-
-        return super(DatabaseSchemaEditor, self)._alter_column_type_sql(table, old_field, new_field, new_type)
+            if new_type != self.connection.data_types['TextField'] or new_type == self.connection.data_types['BinaryField']:
+                # alter column type
+                params = {"column": self.quote_name(new_field.column), "type": new_type}
+                alter_sql = self.sql_alter_column_type % params
+                return ((alter_sql, [],), extra_sql,)
+        if new_type != self.connection.data_types['TextField'] or new_type != self.connection.data_types['BinaryField']:
+            return super(DatabaseSchemaEditor, self)._alter_column_type_sql(table, old_field, new_field, new_type)
+        else:
+            return ((alter_blob_actions), [],)
 
     def _alter_field(self, model, old_field, new_field, old_type, new_type,
                      old_db_params, new_db_params, strict=False):
@@ -241,7 +293,11 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             fragment, other_actions = self._alter_column_type_sql(
                 model._meta.db_table, old_field, new_field, new_type
             )
-            actions.append(fragment)
+            # If new type is blob, then fragment contains 4 action
+            if isinstance(fragment, list):
+                [actions.append(el) for el in fragment]
+            else:
+                actions.append(fragment)
             post_actions.extend(other_actions)
         # When changing a column NULL constraint to NOT NULL with a given
         # default value, we need to perform 4 steps:
@@ -304,23 +360,42 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
                 actions = [(", ".join(sql), sum(params, []))]
             # Apply those actions
             for sql, params in actions:
-                self.execute(
-                    self.sql_alter_column % {
-                        "table": self.quote_name(model._meta.db_table),
-                        "changes": sql,
-                    },
-                    params,
-                )
+                # The Firebird does not support direct type change to BLOB.
+                # Need to execute 4 action in addition to alter.
+                if new_type == self.connection.data_types['TextField'] or new_type == self.connection.data_types['BinaryField']:
+                    self.execute(sql, params)
+                else:
+                    self.execute(
+                        self.sql_alter_column % {
+                            "table": self.quote_name(model._meta.db_table),
+                            "changes": sql,
+                        },
+                        params,
+                    )
             if four_way_default_alteration:
                 # Update existing rows with default value
-                self.execute(
-                    self.sql_update_with_default % {
-                        "table": self.quote_name(model._meta.db_table),
-                        "column": self.quote_name(new_field.column),
-                        "default": "%s",
-                    },
-                    [new_default],
-                )
+
+                # Some databases can't take defaults as a parameter (oracle)
+                # If this is the case, the individual schema backend should
+                # implement prepare_default
+                if self.connection.features.requires_literal_defaults:
+                    actions.append((
+                        self.sql_update_with_default % {
+                            "table": self.quote_name(model._meta.db_table),
+                            "column": self.quote_name(new_field.column),
+                            "default": self.prepare_default(new_default),
+                        },
+                        [],
+                    ))
+                else:
+                    self.execute(
+                        self.sql_update_with_default % {
+                            "table": self.quote_name(model._meta.db_table),
+                            "column": self.quote_name(new_field.column),
+                            "default": "%s",
+                        },
+                        [new_default],
+                    )
                 # Since we didn't run a NOT NULL change before we need to do it
                 # now
                 for sql, params in null_actions:
@@ -480,4 +555,18 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         Executes the given SQL statement, with optional parameters.
         """
         # print("schema:", sql)
-        super(DatabaseSchemaEditor, self).execute(sql, params)
+
+        # If DDL and DML statements are executed in one transaction,
+        # then DML statements will not see the changes of the DDL statements.
+        # It is necessary to commit all previous statements so that
+        # follow statements can see changes previous ones.
+        if self.connection.features.autocommits_when_autocommit_is_off:
+            for tr in self.connection.connection.transactions:
+                if tr.active:
+                    tr.commit()
+            # TransactionContext automatically commit statement
+            with TransactionContext(self.connection.connection.trans()) as tr:
+                cur = tr.cursor()
+                cur.execute(str(sql), params)
+        else:
+            super(DatabaseSchemaEditor, self).execute(sql, params)

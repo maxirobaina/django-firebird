@@ -1,5 +1,6 @@
 import datetime
 import itertools
+import mock
 import unittest
 from copy import copy
 
@@ -19,7 +20,7 @@ from django.db.models.fields.related import (
 from django.db.models.indexes import Index
 from django.db.transaction import TransactionManagementError, atomic
 from django.test import (
-    TransactionTestCase, mock, skipIfDBFeature, skipUnlessDBFeature,
+    TransactionTestCase, skipIfDBFeature, skipUnlessDBFeature,
 )
 from django.test.utils import CaptureQueriesContext, isolate_apps, patch_logger
 from django.utils import timezone

@@ -491,7 +491,7 @@ class LookupTests(TestCase):
         except FieldError as ex:
             self.assertEqual(
                 str(ex), "Unsupported lookup 'starts' for CharField "
-                "or join on the field not permitted.")
+                "or join on the field not permitted, perhaps you meant startswith or istartswith?")
 
     def test_relation_nested_lookup_error(self):
         # An invalid nested lookup on a related field raises a useful error.
@@ -683,13 +683,13 @@ class LookupTests(TestCase):
         season_2011.games.create(home="Houston Astros", away="St. Louis Cardinals")
         season_2011.games.create(home="Houston Astros", away="Milwaukee Brewers")
         hunter_pence = Player.objects.create(name="Hunter Pence")
-        hunter_pence.games = Game.objects.filter(season__year__in=[2009, 2010])
+        hunter_pence.games.set(Game.objects.filter(season__year__in=[2009, 2010]))
         pudge = Player.objects.create(name="Ivan Rodriquez")
-        pudge.games = Game.objects.filter(season__year=2009)
+        pudge.games.set(Game.objects.filter(season__year=2009))
         pedro_feliz = Player.objects.create(name="Pedro Feliz")
-        pedro_feliz.games = Game.objects.filter(season__year__in=[2011])
+        pedro_feliz.games.set(Game.objects.filter(season__year__in=[2011]))
         johnson = Player.objects.create(name="Johnson")
-        johnson.games = Game.objects.filter(season__year__in=[2011])
+        johnson.games.set(Game.objects.filter(season__year__in=[2011]))
 
         # Games in 2010
         self.assertEqual(Game.objects.filter(season__year=2010).count(), 3)

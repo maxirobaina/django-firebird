@@ -2,24 +2,25 @@
 from __future__ import unicode_literals
 
 from django.db import models
+from django.core import validators
 
 
 class People(models.Model):
     name = models.CharField(max_length=255)
-    parent = models.ForeignKey('self', models.CASCADE)
+    models.OneToOneField('self', models.CASCADE)
 
 
 class Message(models.Model):
-    from_field = models.ForeignKey(People, models.CASCADE, db_column='from_id')
+    from_field = models.OneToOneField(People, models.CASCADE, db_column='from_id')
 
 
 class PeopleData(models.Model):
-    people_pk = models.ForeignKey(People, models.CASCADE, primary_key=True)
+    people_pk = models.OneToOneField(People, models.CASCADE, primary_key=True)
     ssn = models.CharField(max_length=11)
 
 
 class PeopleMoreData(models.Model):
-    people_unique = models.ForeignKey(People, models.CASCADE, unique=True)
+    people_unique = models.OneToOneField(People, models.CASCADE, unique=True)
     license = models.CharField(max_length=255)
 
 
@@ -50,7 +51,7 @@ class ColumnTypes(models.Model):
     null_bool_field = models.NullBooleanField()
     char_field = models.CharField(max_length=10)
     null_char_field = models.CharField(max_length=10, blank=True, null=True)
-    comma_separated_int_field = models.CommaSeparatedIntegerField(max_length=99)
+    comma_separated_int_field = models.CharField(max_length=99, validators=[validators.validate_comma_separated_integer_list])
     date_field = models.DateField()
     date_time_field = models.DateTimeField()
     decimal_field = models.DecimalField(max_digits=6, decimal_places=1)

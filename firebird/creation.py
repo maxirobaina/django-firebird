@@ -2,7 +2,6 @@ import sys
 import fdb as Database
 
 from django.db.backends.base.creation import BaseDatabaseCreation
-from django.utils.six.moves import input
 
 TEST_MODE = 0
 

@@ -1,4 +1,8 @@
 import datetime
+from unittest import skipUnless
+
+import django
+
 from copy import deepcopy
 
 from django.core.exceptions import FieldError, MultipleObjectsReturned
@@ -6,8 +10,14 @@ from django.db import models, transaction
 from django.db.utils import IntegrityError
 from django.test import TestCase, ignore_warnings
 from django.utils import six
-from django.utils.deprecation import RemovedInDjango20Warning
 from django.utils.translation import ugettext_lazy
+
+if django.VERSION[0] < 2:
+    # if django.version < 2.0
+    from django.utils.deprecation import RemovedInDjango20Warning
+else:
+    RemovedInDjango21Warning = None
+
 
 from .models import (
     Article, Category, Child, City, District, First, Parent, Record, Relation,
@@ -580,6 +590,7 @@ class ManyToOneTests(TestCase):
         with self.assertNumQueries(1):
             self.assertEqual(th.child_set.count(), 0)
 
+    @skipUnless(RemovedInDjango20Warning == None, "RemovedInDjango20Warning is not defined")
     @ignore_warnings(category=RemovedInDjango20Warning)  # for use_for_related_fields deprecation
     def test_related_object(self):
         public_school = School.objects.create(is_public=True)

@@ -20,7 +20,7 @@ class Foo(models.Model):
 
 class Bar(models.Model):
     b = models.CharField(max_length=10)
-    a = models.ForeignKey(Foo, related_name=b'bars')
+    a = models.ForeignKey(Foo, related_name='bars', on_delete=models.CASCADE)
 
 
 @python_2_unicode_compatible

@@ -105,7 +105,7 @@ class DatesTests(TestCase):
         six.assertRaisesRegex(
             self,
             AssertionError,
-            "'kind' must be one of 'year', 'month' or 'day'.",
+            "'kind' must be one of 'year', 'month', 'week', or 'day'.",
             Article.objects.dates,
             "pub_date",
             "bad_kind",
