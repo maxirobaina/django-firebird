@@ -195,7 +195,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
                 params = {"column": self.quote_name(new_field.column), "type": new_type}
                 alter_sql = self.sql_alter_column_type % params
                 return ((alter_sql, [],), extra_sql,)
-        if new_type != self.connection.data_types['TextField'] or new_type != self.connection.data_types['BinaryField']:
+        if new_type != self.connection.data_types['TextField'] and new_type != self.connection.data_types['BinaryField']:
             return super(DatabaseSchemaEditor, self)._alter_column_type_sql(table, old_field, new_field, new_type)
         else:
             return ((alter_blob_actions), [],)
