@@ -7,20 +7,20 @@ from django.core import validators
 
 class People(models.Model):
     name = models.CharField(max_length=255)
-    parent = models.OneToOneField('self', models.CASCADE)#models.ForeignKey('self', models.CASCADE, unique=True)
+    models.OneToOneField('self', models.CASCADE)
 
 
 class Message(models.Model):
-    from_field = models.OneToOneField(People, models.CASCADE, db_column='from_id')#models.ForeignKey(People, models.CASCADE, db_column='from_id')
+    from_field = models.OneToOneField(People, models.CASCADE, db_column='from_id')
 
 
 class PeopleData(models.Model):
-    people_pk = models.OneToOneField(People, models.CASCADE, primary_key=True)#models.ForeignKey(People, models.CASCADE, primary_key=True)
+    people_pk = models.OneToOneField(People, models.CASCADE, primary_key=True)
     ssn = models.CharField(max_length=11)
 
 
 class PeopleMoreData(models.Model):
-    people_unique = models.OneToOneField(People, models.CASCADE, unique=True)#models.ForeignKey(People, models.CASCADE, unique=True)
+    people_unique = models.OneToOneField(People, models.CASCADE, unique=True)
     license = models.CharField(max_length=255)
 
 

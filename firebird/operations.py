@@ -94,7 +94,11 @@ class DatabaseOperations(BaseDatabaseOperations):
         Implements the date interval functionality for expressions.
         Do nothing here, we'll handle it in the combine_duration_expression method.
         """
-        return timedelta, []
+        ver = django.get_version()
+        if ver < '2.0.0':
+            return timedelta, []
+        else:
+            return timedelta
 
     def date_trunc_sql(self, lookup_type, field_name):
         if lookup_type == 'year':
@@ -108,7 +112,7 @@ class DatabaseOperations(BaseDatabaseOperations):
     def datetime_cast_date_sql(self, field_name, tzname):
         sql = 'CAST(%s AS DATE)' % field_name
         ver = django.get_version()
-        if ver < '3.0.0':
+        if ver < '2.0.0':
             return sql, []
         else:
             return sql
@@ -116,7 +120,7 @@ class DatabaseOperations(BaseDatabaseOperations):
     def datetime_cast_time_sql(self, field_name, tzname):
         sql = 'CAST(%s AS TIME)' % field_name
         ver = django.get_version()
-        if ver < '3.0.0':
+        if ver < '2.0.0':
             return sql, []
         else:
             return sql
@@ -132,7 +136,7 @@ class DatabaseOperations(BaseDatabaseOperations):
         else:
             sql = "EXTRACT(%s FROM %s)" % (lookup_type.upper(), field_name)
         ver = django.get_version()
-        if ver < '3.0.0':
+        if ver < '2.0.0':
             return sql, []
         else:
             return sql
@@ -163,10 +167,11 @@ class DatabaseOperations(BaseDatabaseOperations):
         elif lookup_type == 'second':
             sql = "%s||'-'||%s||'-'||%s||' '||%s||':'||%s||':'||%s" % (year, month, day, hh, mm, ss)
         ver = django.get_version()
-        if ver < '3.0.0':
-            return "CAST(%s AS TIMESTAMP)" % sql, []
+        result = "CAST(%s AS TIMESTAMP)" % sql
+        if ver < '2.0.0':
+            return result, []
         else:
-            return "CAST(%s AS TIMESTAMP)" % sql
+            return result
 
     def time_trunc_sql(self, lookup_type, field_name):
         """
@@ -225,6 +230,10 @@ class DatabaseOperations(BaseDatabaseOperations):
     def max_name_length(self):
         return 31
 
+    def distinct_sql(self, fields, params):
+        # just keyword for firebird
+        return ['DISTINCT'], []
+
     def no_limit_value(self):
         return None
 
@@ -276,8 +285,9 @@ class DatabaseOperations(BaseDatabaseOperations):
 
     def convert_decimalfield_value(self, value, expression, connection):
         field = expression.field
+
         val = utils.format_number(value, field.max_digits, field.decimal_places)
-        value = utils.typecast_decimal(val)
+        value = decimal.Decimal.from_float(float(val))
         return value
 
     def convert_ipfield_value(self, value, expression, connection):

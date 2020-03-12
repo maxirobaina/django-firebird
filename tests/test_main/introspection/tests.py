@@ -180,19 +180,21 @@ class IntrospectionTests(TransactionTestCase):
 
     @ignore_warnings(category=RemovedInDjango21Warning)
     def test_get_indexes(self):
-        with connection.cursor() as cursor:
-            indexes = connection.introspection.get_indexes(cursor, Article._meta.db_table)
-        self.assertEqual(indexes['reporter_id'], {'unique': False, 'primary_key': False})
+        if RemovedInDjango21Warning:
+            with connection.cursor() as cursor:
+                indexes = connection.introspection.get_indexes(cursor, Article._meta.db_table)
+            self.assertEqual(indexes['reporter_id'], {'unique': False, 'primary_key': False})
 
     @ignore_warnings(category=RemovedInDjango21Warning)
     def test_get_indexes_multicol(self):
-        """
-        Multicolumn indexes are not included in the introspection results.
-        """
-        with connection.cursor() as cursor:
-            indexes = connection.introspection.get_indexes(cursor, Reporter._meta.db_table)
-        self.assertNotIn('first_name', indexes)
-        self.assertIn('id', indexes)
+        if RemovedInDjango21Warning:
+            """
+            Multicolumn indexes are not included in the introspection results.
+            """
+            with connection.cursor() as cursor:
+                indexes = connection.introspection.get_indexes(cursor, Reporter._meta.db_table)
+            self.assertNotIn('first_name', indexes)
+            self.assertIn('id', indexes)
 
     def test_get_constraints_index_types(self):
         with connection.cursor() as cursor:

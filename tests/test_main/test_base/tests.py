@@ -97,27 +97,27 @@ class DatabaseOperationsTest(TestCase):
         self.assertEqual(sql, value)
 
     def test_datetime_trunc_sql(self):
-        sql, params = self.ops.datetime_trunc_sql('year', 'DATE_FIELD', None)
+        sql = self.ops.datetime_trunc_sql('year', 'DATE_FIELD', None)
         value = "CAST(EXTRACT(year FROM DATE_FIELD)||'-01-01 00:00:00' AS TIMESTAMP)"
         self.assertEqual(sql, value)
 
-        sql, params = self.ops.datetime_trunc_sql('month', 'DATE_FIELD', None)
+        sql = self.ops.datetime_trunc_sql('month', 'DATE_FIELD', None)
         value = "CAST(EXTRACT(year FROM DATE_FIELD)||'-'||EXTRACT(month FROM DATE_FIELD)||'-01 00:00:00' AS TIMESTAMP)"
         self.assertEqual(sql, value)
 
-        sql, params = self.ops.datetime_trunc_sql('day', 'DATE_FIELD', None)
+        sql = self.ops.datetime_trunc_sql('day', 'DATE_FIELD', None)
         value = "CAST(EXTRACT(year FROM DATE_FIELD)||'-'||EXTRACT(month FROM DATE_FIELD)||'-'||EXTRACT(day FROM DATE_FIELD)||' 00:00:00' AS TIMESTAMP)"
         self.assertEqual(sql, value)
 
-        sql, params = self.ops.datetime_trunc_sql('hour', 'DATE_FIELD', None)
+        sql = self.ops.datetime_trunc_sql('hour', 'DATE_FIELD', None)
         value = "CAST(EXTRACT(year FROM DATE_FIELD)||'-'||EXTRACT(month FROM DATE_FIELD)||'-'||EXTRACT(day FROM DATE_FIELD)||' '||EXTRACT(hour FROM DATE_FIELD)||':00:00' AS TIMESTAMP)"
         self.assertEqual(sql, value)
 
-        sql, params = self.ops.datetime_trunc_sql('minute', 'DATE_FIELD', None)
+        sql = self.ops.datetime_trunc_sql('minute', 'DATE_FIELD', None)
         value = "CAST(EXTRACT(year FROM DATE_FIELD)||'-'||EXTRACT(month FROM DATE_FIELD)||'-'||EXTRACT(day FROM DATE_FIELD)||' '||EXTRACT(hour FROM DATE_FIELD)||':'||EXTRACT(minute FROM DATE_FIELD)||':00' AS TIMESTAMP)"
         self.assertEqual(sql, value)
 
-        sql, params = self.ops.datetime_trunc_sql('second', 'DATE_FIELD', None)
+        sql = self.ops.datetime_trunc_sql('second', 'DATE_FIELD', None)
         value = "CAST(EXTRACT(year FROM DATE_FIELD)||'-'||EXTRACT(month FROM DATE_FIELD)||'-'||EXTRACT(day FROM DATE_FIELD)||' '||EXTRACT(hour FROM DATE_FIELD)||':'||EXTRACT(minute FROM DATE_FIELD)||':'||TRUNC(EXTRACT(second FROM DATE_FIELD)) AS TIMESTAMP)"
         self.assertEqual(sql, value)
 

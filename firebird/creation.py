@@ -61,10 +61,14 @@ class DatabaseCreation(BaseDatabaseCreation):
         if test_settings:
             if test_settings['NAME']:
                 params['database'] = settings_dict['NAME']
-            if test_settings['CHARSET']:
+            if 'CHARSET' in test_settings:
                 params['charset'] = test_settings['CHARSET']
-            if test_settings['PAGE_SIZE']:
+            else:
+                params['charset'] = "UTF8"
+            if 'PAGE_SIZE' in test_settings:
                 params['page_size'] = test_settings['PAGE_SIZE']
+            else:
+                params['page_size'] = 8192
         params.update(overrides)
         return params
 

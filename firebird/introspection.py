@@ -111,6 +111,10 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
             items.append(FieldInfo(r[0], r[1], r[2], r[2] or 0, r[3], r[4], not (r[5] == 1), r[6]))
         return items
 
+    def get_sequences(self, cursor, table_name, table_fields=()):
+        pk_col = self.get_primary_key_column(cursor, table_name)
+        return [{'table': table_name, 'column': pk_col}]
+
     def get_key_columns(self, cursor, table_name):
         """
         Backends can override this to return a list of (column_name, referenced_table_name,

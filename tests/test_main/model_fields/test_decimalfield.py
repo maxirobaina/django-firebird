@@ -1,4 +1,5 @@
 from decimal import Decimal
+from unittest import skipUnless
 
 from django.core import validators
 from django.core.exceptions import ValidationError
@@ -22,7 +23,7 @@ class DecimalFieldTests(TestCase):
         f = models.DecimalField(default=Decimal('0.00'))
         self.assertEqual(f.get_default(), Decimal('0.00'))
 
-    @skip("DecimalField hasn't _format() method")
+    @skipUnless("DecimalField hasn't _format() method")
     def test_format(self):
         f = models.DecimalField(max_digits=5, decimal_places=1)
         self.assertEqual(f._format(f.to_python(2)), '2.0')

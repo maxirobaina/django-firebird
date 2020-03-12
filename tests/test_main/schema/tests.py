@@ -1,7 +1,7 @@
 import datetime
 import itertools
-import unittest
 import mock
+import unittest
 from copy import copy
 
 from django.db import (

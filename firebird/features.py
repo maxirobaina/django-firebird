@@ -11,7 +11,6 @@ class DatabaseFeatures(BaseDatabaseFeatures):
     has_select_for_update_nowait = False
     has_select_for_update_skip_locked = False
     has_select_for_update_of = True
-    supports_forward_references = False
     supports_tablespaces = False
     supports_long_model_names = False
     supports_timezones = False
@@ -50,6 +49,9 @@ class DatabaseFeatures(BaseDatabaseFeatures):
 
     supports_microsecond_precision = False
 
+    can_introspect_null = True
+
+    # Commit every statements, that other transactions see changes.
     autocommits_when_autocommit_is_off = True
 
     @cached_property
