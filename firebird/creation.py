@@ -49,36 +49,30 @@ class DatabaseCreation(BaseDatabaseCreation):
 
     def _get_creation_params(self, **overrides):
         settings_dict = self.connection.settings_dict
-        params = {'charset': 'UTF8'}
-        if settings_dict['USER']:
+        params = {}
+        if 'USER' in settings_dict:
             params['user'] = settings_dict['USER']
-        if settings_dict['PASSWORD']:
+        if 'PASSWORD' in settings_dict:
             params['password'] = settings_dict['PASSWORD']
+        params['charset'] = settings_dict.get('CHARSET') or 'UTF8'
+        params['host'] = settings_dict.get('HOST') or 'localhost'
+        params['port'] = settings_dict.get('PORT') or 3050
 
         test_settings = settings_dict.get('TEST')
         if test_settings:
-            if test_settings['NAME']:
+            if 'NAME' in test_settings:
                 params['database'] = settings_dict['NAME']
-            if 'CHARSET' in test_settings:
-                params['charset'] = test_settings['CHARSET']
-            else:
-                params['charset'] = "UTF8"
-            if 'PAGE_SIZE' in test_settings:
-                params['page_size'] = test_settings['PAGE_SIZE']
-            else:
-                params['page_size'] = 8192
+            params['host'] = settings_dict.get('HOST') or params.get('host')
+            params['port'] = settings_dict.get('PORT') or params.get('port')
+            params['charset'] = test_settings.get('CHARSET') or params.get('charset')
+            params['page_size'] = test_settings.get('PAGE_SIZE') or 8192
         params.update(overrides)
         return params
 
     def _create_database(self, test_database_name, verbosity):
         self._check_active_connection(verbosity)
         params = self._get_creation_params(database=test_database_name)
-        connection = Database.create_database("""
-                        CREATE DATABASE '%(database)s'
-                        USER '%(user)s'
-                        PASSWORD '%(password)s'
-                        PAGE_SIZE %(page_size)s
-                        DEFAULT CHARACTER SET %(charset)s;""" % params)
+        connection = Database.create_database(**params)
         connection.execute_immediate("CREATE EXCEPTION teste '';")
         connection.commit()
         connection.close()
