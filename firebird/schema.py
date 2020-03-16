@@ -379,22 +379,13 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
                 # If this is the case, the individual schema backend should
                 # implement prepare_default
                 if self.connection.features.requires_literal_defaults:
-                    actions.append((
+                    self.execute(
                         self.sql_update_with_default % {
                             "table": self.quote_name(model._meta.db_table),
                             "column": self.quote_name(new_field.column),
                             "default": self.prepare_default(new_default),
                         },
                         [],
-                    ))
-                else:
-                    self.execute(
-                        self.sql_update_with_default % {
-                            "table": self.quote_name(model._meta.db_table),
-                            "column": self.quote_name(new_field.column),
-                            "default": "%s",
-                        },
-                        [new_default],
                     )
                 # Since we didn't run a NOT NULL change before we need to do it
                 # now
