@@ -31,8 +31,7 @@ class DatabaseCreation(BaseDatabaseCreation):
 
     def _get_connection_params(self, **overrides):
         settings_dict = self.connection.settings_dict
-        conn_params = {'charset': 'UTF8'}
-        conn_params['database'] = settings_dict['NAME']
+        conn_params = {'charset': 'UTF8', 'database': settings_dict['NAME']}
         if settings_dict['HOST']:
             conn_params['host'] = settings_dict['HOST']
         if settings_dict['PORT']:
@@ -50,14 +49,22 @@ class DatabaseCreation(BaseDatabaseCreation):
     def _get_creation_params(self, **overrides):
         settings_dict = self.connection.settings_dict
         params = {'charset': 'UTF8'}
-        if settings_dict['USER']:
+        if 'HOST' in settings_dict:
+            params['host'] = settings_dict['HOST']
+        else:
+            params['host'] = 'localhost'
+        if 'PORT' in settings_dict:
+            params['port'] = settings_dict['PORT']
+        else:
+            params['port'] = '3050'
+        if 'USER' in settings_dict:
             params['user'] = settings_dict['USER']
-        if settings_dict['PASSWORD']:
+        if 'PASSWORD' in settings_dict:
             params['password'] = settings_dict['PASSWORD']
 
         test_settings = settings_dict.get('TEST')
         if test_settings:
-            if test_settings['NAME']:
+            if 'NAME' in test_settings:
                 params['database'] = settings_dict['NAME']
             if 'CHARSET' in test_settings:
                 params['charset'] = test_settings['CHARSET']
@@ -74,7 +81,7 @@ class DatabaseCreation(BaseDatabaseCreation):
         self._check_active_connection(verbosity)
         params = self._get_creation_params(database=test_database_name)
         connection = Database.create_database("""
-                        CREATE DATABASE '%(database)s'
+                        CREATE DATABASE '%(host)s/%(port)s:%(database)s'
                         USER '%(user)s'
                         PASSWORD '%(password)s'
                         PAGE_SIZE %(page_size)s
