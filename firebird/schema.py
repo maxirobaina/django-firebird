@@ -557,7 +557,11 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
                     tr.commit()
             # TransactionContext automatically commit statement
             with TransactionContext(self.connection.connection.trans()) as tr:
-                cur = tr.cursor()
-                cur.execute(str(sql), params)
+                try:
+                    cur = tr.cursor()
+                    cur.execute(str(sql), params)
+                except Exception as e:
+                    print(e)
+                    raise e
         else:
             super(DatabaseSchemaEditor, self).execute(sql, params)
