@@ -148,16 +148,16 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         if new_type == self.connection.data_types['TextField'] or new_type == self.connection.data_types['BinaryField']:
             alter_blob_actions.append(
                 (self.sql_create_column % {
-                "table": self.quote_name(table),
-                "column": self.quote_name("mirgate_temp_" + new_field.column),
-                "definition": new_type,
+                    "table": self.quote_name(table),
+                    "column": self.quote_name("mirgate_temp_" + new_field.column),
+                    "definition": new_type,
                 }, [])
             )
             alter_blob_actions.append(
                 (self.sql_update_with_default % {
-                "table": self.quote_name(table),
-                "column": self.quote_name("mirgate_temp_" + new_field.column),
-                "default": self.quote_name(old_field.column),
+                    "table": self.quote_name(table),
+                    "column": self.quote_name("mirgate_temp_" + new_field.column),
+                    "default": self.quote_name(old_field.column),
                 }, [])
             )
             alter_blob_actions.append(
@@ -190,15 +190,39 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
                 params = {"table": table, "name": name, "columns": self.quote_name(column)}
                 extra_sql.append((self.sql_create_unique % params, [],))
 
-            if new_type != self.connection.data_types['TextField'] or new_type == self.connection.data_types['BinaryField']:
+            if new_type != self.connection.data_types['TextField'] or new_type == self.connection.data_types[
+                'BinaryField']:
                 # alter column type
                 params = {"column": self.quote_name(new_field.column), "type": new_type}
                 alter_sql = self.sql_alter_column_type % params
                 return ((alter_sql, [],), extra_sql,)
-        if new_type != self.connection.data_types['TextField'] and new_type != self.connection.data_types['BinaryField']:
+        if new_type != self.connection.data_types['TextField'] and new_type != self.connection.data_types[
+            'BinaryField']:
             return super(DatabaseSchemaEditor, self)._alter_column_type_sql(table, old_field, new_field, new_type)
         else:
             return ((alter_blob_actions), [],)
+
+    def _alter_column_blob_type_sql(self, table, old_field, new_field, new_type):
+        # The Firebird does not support direct type change from BLOB,
+        # therefore this action is divided into 4 stages.
+        # Change through temp column.
+        alter_blob_actions = [(self.sql_create_column % {
+            "table": self.quote_name(table),
+            "column": self.quote_name("mirgate_temp_" + new_field.column),
+            "definition": new_type,
+        }, []), (self.sql_update_with_default % {
+            "table": self.quote_name(table),
+            "column": self.quote_name("mirgate_temp_" + new_field.column),
+            "default": self.quote_name(old_field.column),
+        }, []), (self.sql_delete_column % {
+            "table": self.quote_name(table),
+            "column": self.quote_name(old_field.column),
+        }, []), (self.sql_rename_column % {
+            "table": self.quote_name(table),
+            "old_column": self.quote_name("mirgate_temp_" + new_field.column),
+            "new_column": self.quote_name(new_field.column),
+        }, [])]
+        return ((alter_blob_actions), [],)
 
     def _alter_field(self, model, old_field, new_field, old_type, new_type,
                      old_db_params, new_db_params, strict=False):
@@ -241,10 +265,10 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         # Drop incoming FK constraints if the field is a primary key or unique,
         # which might be a to_field target, and things are going to change.
         drop_foreign_keys = (
-            (
-                (old_field.primary_key and new_field.primary_key) or
-                (old_field.unique and new_field.unique)
-            ) and old_type != new_type
+                (
+                        (old_field.primary_key and new_field.primary_key) or
+                        (old_field.unique and new_field.unique)
+                ) and old_type != new_type
         )
         if drop_foreign_keys:
             # '_meta.related_field' also contains M2M reverse fields, these
@@ -302,7 +326,14 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             fragment, other_actions = self._alter_column_type_sql(
                 model._meta.db_table, old_field, new_field, new_type
             )
-            # If new type is blob, then fragment contains 4 action
+            # If old type is blob, then we have to make new field in 4 steps
+            if old_type == self.connection.data_types['TextField'] \
+                    or old_type == self.connection.data_types['BinaryField']:
+                fragment, other_actions = self._alter_column_blob_type_sql(
+                    model._meta.db_table, old_field, new_field, new_type
+                )
+
+            # If new type is blob or old type was blob, then fragment contains 4 action
             if isinstance(fragment, list):
                 [actions.append(el) for el in fragment]
             else:
@@ -318,9 +349,9 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         old_default = self.effective_default(old_field)
         new_default = self.effective_default(new_field)
         needs_database_default = (
-            old_default != new_default and
-            new_default is not None and
-            not self.skip_default(new_field)
+                old_default != new_default and
+                new_default is not None and
+                not self.skip_default(new_field)
         )
         if needs_database_default:
             if self.connection.features.requires_literal_defaults:
@@ -355,8 +386,8 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
 
         # Only if we have a default and there is a change from NULL to NOT NULL
         four_way_default_alteration = (
-            new_field.has_default() and
-            (old_field.null and not new_field.null)
+                new_field.has_default() and
+                (old_field.null and not new_field.null)
         )
         if actions or null_actions:
             if not four_way_default_alteration:
@@ -369,9 +400,9 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
                 actions = [(", ".join(sql), sum(params, []))]
             # Apply those actions
             for sql, params in actions:
-                # The Firebird does not support direct type change to BLOB.
+                # The Firebird does not support direct type change to/from BLOB.
                 # Need to execute 4 action in addition to alter.
-                if new_type == self.connection.data_types['TextField'] or new_type == self.connection.data_types['BinaryField']:
+                if isinstance(fragment, list):
                     self.execute(sql, params)
                 else:
                     self.execute(
