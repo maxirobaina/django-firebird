@@ -218,9 +218,18 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
                 fks_dropped.add((old_field.column,))
                 self.execute(self._delete_constraint_sql(self.sql_delete_fk, model, fk_name))
         # Has unique been removed?
-        if old_field.unique and (not new_field.unique or (not old_field.primary_key and new_field.primary_key)):
+        unique = None
+        for uni in model._meta.unique_together:
+            if old_field.column in uni:
+                unique = uni
+                break
+        if unique or (
+                old_field.unique and (not new_field.unique or (not old_field.primary_key and new_field.primary_key))):
             # Find the unique constraint for this field
-            constraint_names = self._constraint_names(model, [old_field.column], unique=True)
+            if unique:
+                constraint_names = self._constraint_names(model, unique, unique=True)
+            else:
+                constraint_names = self._constraint_names(model, [old_field.column], unique=True)
             if strict and len(constraint_names) != 1:
                 raise ValueError("Found wrong number (%s) of unique constraints for %s.%s" % (
                     len(constraint_names),
@@ -402,9 +411,12 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
                 self.execute(sql, params)
         # Added a unique?
         if (not old_field.unique and new_field.unique) or (
-            old_field.primary_key and not new_field.primary_key and new_field.unique
-        ):
-            self.execute(self._create_unique_sql(model, [new_field.column]))
+                old_field.primary_key and not new_field.primary_key and new_field.unique
+        ) or unique:
+            if unique:
+                self.execute(self._create_unique_sql(model, unique))
+            else:
+                self.execute(self._create_unique_sql(model, [new_field.column]))
         # Added an index? Add an index if db_index switched to True or a unique
         # constraint will no longer be used in lieu of an index. The following
         # lines from the truth table show all True cases; the rest are False:
