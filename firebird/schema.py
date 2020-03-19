@@ -521,6 +521,9 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
 
         # Also, drop sequence if exists
         table_name = model._meta.db_table
+        if not self.sequence_exist(table_name):
+            return
+
         sql = self.connection.ops.drop_sequence_sql(table_name)
         if sql:
             try:
@@ -530,7 +533,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
                 pass
 
     def sequence_exist(self, table):
-        seq_name = self.connection.ops.get_sequence_name(table)
+        seq_name = str(self.connection.ops.get_sequence_name(table)).replace("\"", "\'")
         sql = """
         SELECT RDB$GENERATOR_ID
         FROM RDB$GENERATORS
@@ -538,7 +541,8 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         """ % seq_name
         value = None
         with self.connection.cursor() as cursor:
-            value = cursor.execute(sql)
+            cursor.execute(sql)
+            value = cursor.fetchone()
         return True if value else False
 
     def execute(self, sql, params=[]):
