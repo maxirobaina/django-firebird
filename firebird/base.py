@@ -188,6 +188,259 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         cursor = self.connection.cursor()
         return FirebirdCursorWrapper(cursor, self.encoding)
 
+    # ##### Foreign key constraints checks handling #####
+
+    def disable_constraint_checking(self):
+        """
+        Backends can implement as needed to temporarily disable foreign key
+        constraint checking. Should return True if the constraints were
+        disabled and will need to be reenabled.
+        """
+        self.disable_constraints()
+        return False
+
+    def enable_constraint_checking(self):
+        """
+        Backends can implement as needed to re-enable foreign key constraint
+        checking.
+        """
+        self.enable_constraints()
+
+    def disable_constraints(self):
+        create_django_constraint = """
+            create table django$constraint (
+                django$constraint_name varchar(31) not null constraint pk_djangocopyconstraint primary key,
+                django$constraint_type varchar(11) not null,
+                django$relation_name varchar(31) not null,
+                django$index_name varchar(31),
+                django$const_name_uq varchar(31),
+                django$update_rule varchar(11),
+                django$delete_rule varchar(11),
+                django$constraint_source blob sub_type 1
+            )
+        """
+        create_django_constraint_segment = """
+            create table django$constraint_segment (
+                django$constraint_name varchar(31) not null,
+                django$field_name varchar(31) not null,
+                django$position integer not null,
+                constraint pk_djangocopyconstraintsegment primary key (django$constraint_name, django$field_name)
+            )
+        """
+        save_constraints = """
+            merge into django$constraint dc
+            using (select
+                trim(trailing from c.rdb$constraint_name) as constraint_name,
+                trim(trailing from c.rdb$constraint_type) as constraint_type,
+                trim(trailing from c.rdb$relation_name) as relation_name,
+                nullif(trim(trailing from c.rdb$index_name), '') as index_name,
+                t.rdb$trigger_source as constraint_source,
+                nullif(trim(trailing from r.rdb$const_name_uq), '') as const_name_uq,
+                nullif(trim(trailing from r.rdb$update_rule), '') as update_rule,
+                nullif(trim(trailing from r.rdb$delete_rule), '') as delete_rule
+            from 
+            rdb$relation_constraints c left join
+                (select * from rdb$check_constraints p
+                where p.rdb$trigger_name = (select first 1 rdb$trigger_name from rdb$check_constraints o
+                where p.rdb$constraint_name = o.rdb$constraint_name)) h on c.rdb$constraint_name = h.rdb$constraint_name
+                left join rdb$triggers t on t.rdb$trigger_name = h.rdb$trigger_name
+                left join rdb$ref_constraints r on r.rdb$constraint_name = c.rdb$constraint_name
+            where c.rdb$constraint_type in ('FOREIGN KEY', 'CHECK', 'UNIQUE')
+            and
+            c.rdb$relation_name not starting with 'RDB$') rc
+            on dc.django$constraint_name = rc.constraint_name
+            when matched then
+                update set
+                    dc.django$constraint_type = rc.constraint_type,
+                    dc.django$relation_name = rc.relation_name,
+                    dc.django$index_name = rc.index_name,
+                    dc.django$constraint_source = rc.constraint_source,
+                    dc.django$const_name_uq = rc.const_name_uq,
+                    dc.django$update_rule = rc.update_rule,
+                    dc.django$delete_rule = rc.delete_rule
+            when not matched then
+                insert (dc.django$constraint_name,
+                    dc.django$constraint_type,
+                    dc.django$relation_name,
+                    dc.django$index_name,
+                    dc.django$constraint_source,
+                    dc.django$const_name_uq,
+                    dc.django$update_rule,
+                    dc.django$delete_rule)
+                values (rc.constraint_name,
+                    rc.constraint_type,
+                    rc.relation_name,
+                    rc.index_name,
+                    rc.constraint_source,
+                    rc.const_name_uq,
+                    update_rule,
+                    rc.delete_rule)
+        """
+        save_segment_constraints = """
+            merge into django$constraint_segment dcs
+            using (
+                select c.rdb$constraint_name as constraint_name,
+                    s.rdb$field_name as field_name,
+                    s.rdb$field_position as field_position
+                from rdb$relation_constraints c, rdb$index_segments s
+                where s.rdb$index_name = c.rdb$index_name
+                and c.rdb$constraint_type in ('FOREIGN KEY', 'CHECK', 'UNIQUE')
+                and c.rdb$relation_name not starting with 'RDB$') cs
+            on dcs.django$constraint_name = cs.constraint_name
+                and dcs.django$field_name = cs.field_name
+            when matched then
+                update set
+                    dcs.django$position = cs.field_position
+            when not matched then
+                insert (django$constraint_name,
+                    django$field_name,
+                    django$position)
+                values (
+                    cs.constraint_name,
+                    cs.field_name,
+                    cs.field_position)
+        """
+        select_drop_constraints = """
+            select trim(trailing from rdb$constraint_name) as constr_name,
+                trim(trailing from c.rdb$relation_name) as table_name
+            from rdb$relation_constraints c
+            where c.rdb$constraint_type in ('FOREIGN KEY', 'CHECK', 'UNIQUE')
+            and
+            c.rdb$relation_name not starting with 'RDB$'
+            order by c.rdb$constraint_type
+        """
+        editor = self.schema_editor()
+        if not self.table_exists("django$constraint"):
+            editor.execute(create_django_constraint)
+        if not self.table_exists("django$constraint_segment"):
+            editor.execute(create_django_constraint_segment)
+        editor.execute(save_constraints)
+        editor.execute(save_segment_constraints)
+        constraints = self.get_drop_constraints(select_drop_constraints)
+        for hm in constraints:
+            sql = """
+                alter table "%(table)s" drop constraint "%(constraint)s"
+            """ % {
+                'table': hm['TABLE_NAME'],
+                'constraint': hm['CONSTR_NAME']
+            }
+            editor.execute(sql)
+
+    def enable_constraints(self):
+        editor = self.schema_editor()
+        select_django_constraint = """
+        select django$constraint_name as constraint_name,
+            django$constraint_type as constraint_type,
+            django$relation_name as relation_name,
+            django$index_name as index_name,
+            django$constraint_source as constraint_source,
+            django$const_name_uq as const_name_uq,
+            django$update_rule as update_rule,
+            django$delete_rule as delete_rule
+        from django$constraint
+        order by django$constraint_type desc"""
+        constraints = self.get_drop_constraints(select_django_constraint)
+        for hm in constraints:
+            if not self.table_exists(hm['RELATION_NAME'].strip()):
+                continue
+            create_string = "alter table \"" + hm['RELATION_NAME'] + "\" add "
+            if not hm['CONSTRAINT_NAME'].startswith("RDB$"):
+                create_string += "constraint " + hm['CONSTRAINT_NAME']
+            if hm['CONSTRAINT_TYPE'].casefold() == "CHECK".casefold():
+                create_string += " " + hm['CONSTRAINT_SOURCE']
+            elif hm['CONSTRAINT_TYPE'].casefold() == "FOREIGN KEY".casefold():
+                select_relation = """select coalesce(trim(trailing from rdb$relation_name), '')
+                    from rdb$relation_constraints where rdb$constraint_name = '%s'                    
+                """ % hm['CONST_NAME_UQ']
+                table = ''
+                with self.cursor() as cursor:
+                    cursor.execute(select_relation)
+                    table = '"' + cursor.fetchone()[0].strip() + '"'
+                select_django_constraint_segment = """
+                    select django$field_name as field_name from django$constraint_segment s 
+                    where s.django$constraint_name = '%s'
+                    order by django$position
+                """ % hm['CONSTRAINT_NAME']
+                segments = []
+                with self.cursor() as cursor:
+                    cursor.execute(select_django_constraint_segment)
+                    for row in cursor.fetchall():
+                        map = {}
+                        for i, desc in enumerate(cursor.cursor.cursor.description):
+                            map[desc[0]] = row[i]
+                        segments.append(map)
+                field_list = []
+                for field in segments:
+                    field_list.append('"' + field['FIELD_NAME'].strip() + '"')
+                create_string += " foreign key(" + ','.join(str(x) for x in field_list) +\
+                                 ") references " + table + "("
+                select_index_segment = """
+                    select trim(trailing from rdb$field_name) as field_name from rdb$index_segments s
+                    join rdb$relation_constraints r on r.rdb$index_name = s.rdb$index_name
+                    where r.rdb$constraint_name = '%s'
+                    order by rdb$field_position
+                """ % hm['CONST_NAME_UQ']
+                index_segments = []
+                with self.cursor() as cursor:
+                    cursor.execute(select_index_segment)
+                    for row in cursor.fetchall():
+                        index_segments.append('"' + row[0].strip() + '"')
+                create_string += ','.join(str(x) for x in index_segments) + ")"
+                if hm['UPDATE_RULE'].casefold() != "RESTRICT".casefold():
+                    create_string += " on update " + hm['UPDATE_RULE']
+                if hm['DELETE_RULE'].casefold() != "RESTRICT".casefold():
+                    create_string += " on delete " + hm['DELETE_RULE']
+                if not hm['INDEX_NAME'].startswith("RDB$"):
+                    create_string += " using index " + hm['INDEX_NAME']
+            elif hm['CONSTRAINT_TYPE'].casefold() == "UNIQUE".casefold():
+                select_django_constraint_segment = """
+                    select django$field_name as field_name from django$constraint_segment s
+                    where s.django$constraint_name = '%s'
+                    order by django$position
+                """ % hm['CONSTRAINT_NAME']
+                segments = []
+                with self.cursor() as cursor:
+                    cursor.execute(select_django_constraint_segment)
+                    for row in cursor.fetchall():
+                        map = {}
+                        for i, desc in enumerate(cursor.cursor.cursor.description):
+                            map[desc[0]] = row[i]
+                        segments.append(map)
+                field_list = []
+                for field in segments:
+                    field_list.append('"' + field['FIELD_NAME'].strip() + '"')
+                create_string += " unique(" + ','.join(str(x) for x in field_list) + ")"
+            try:
+                editor.execute(create_string)
+            except Exception as e:
+                print(e)
+        try:
+            editor.execute("delete from django$constraint_segment")
+            editor.execute("delete from django$constraint")
+        except Exception as e:
+            print(e)
+
+    def table_exists(self, table_name):
+        sql = """
+            select null from rdb$relations where rdb$system_flag=0 and rdb$view_blr is null and rdb$relation_name='%s'
+        """ % str(table_name).upper()
+        value = None
+        with self.cursor() as cursor:
+            cursor.execute(sql)
+            value = cursor.fetchone()
+        return True if value else False
+
+    def get_drop_constraints(self, query):
+        value = []
+        with self.cursor() as cursor:
+            cursor.execute(query)
+            for row in cursor.fetchall():
+                map = {}
+                for i, desc in enumerate(cursor.cursor.cursor.description):
+                    map[desc[0]] = row[i]
+                value.append(map)
+        return value
+
     # #### Backend-specific transaction management methods #####
 
     def _set_autocommit(self, autocommit):

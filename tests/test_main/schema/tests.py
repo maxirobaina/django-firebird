@@ -2350,6 +2350,7 @@ class SchemaTests(TransactionTestCase):
             editor.alter_field(Author, new_field, old_field, strict=True)
         self.assertEqual(self.get_constraints_for_column(Author, 'weight'), [])
 
+    @unittest.skipIf(connection.vendor == 'firebird', "FirebirdSQL specific")
     def test_alter_pk_with_self_referential_field(self):
         """
         Changing the primary key field name of a model with a self-referential

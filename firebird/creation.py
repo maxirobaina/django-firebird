@@ -31,8 +31,7 @@ class DatabaseCreation(BaseDatabaseCreation):
 
     def _get_connection_params(self, **overrides):
         settings_dict = self.connection.settings_dict
-        conn_params = {'charset': 'UTF8'}
-        conn_params['database'] = settings_dict['NAME']
+        conn_params = {'charset': 'UTF8', 'database': settings_dict['NAME']}
         if settings_dict['HOST']:
             conn_params['host'] = settings_dict['HOST']
         if settings_dict['PORT']:
