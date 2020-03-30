@@ -353,9 +353,13 @@ class DatabaseOperations(BaseDatabaseOperations):
             unit = 'second'
             value = str((decimal.Decimal(timedelta) * sign) / decimal.Decimal(1000000))
         elif isinstance(timedelta, six.string_types):
-            if timedelta.isdigit():
-                unit = 'second'
-                value = "(%s * %s) / 1000000" % (timedelta, sign,)
+            if timedelta.isdigit() or not "timestamp".casefold() in timedelta.casefold():
+                unit = 'millisecond'
+                value = "(%s * %s) / 1000" % (timedelta, sign,)
+            elif not "timestamp".casefold() in sql.casefold() and not timedelta.isdigit():
+                unit = 'millisecond'
+                value = "(%s * %s) / 1000" % (sql, sign,)
+                return 'DATEADD(%s %s TO %s)' % (value, unit, timedelta)
             else:
                 return super(DatabaseOperations, self).combine_duration_expression(connector, sub_expressions)
         else:
