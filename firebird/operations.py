@@ -1,4 +1,5 @@
 import decimal
+import re
 import uuid
 import datetime
 
@@ -46,7 +47,14 @@ class DatabaseOperations(BaseDatabaseOperations):
         (e.g. major version is firebird_version[0])
         """
         server_version = self.connection.server_version
-        return [int(val) for val in server_version.split()[-1].split('.')]
+        pattern = re.compile(r"((\w{2})-(\w)(\d+)\.(\d+)\.(\d+)\.(\d+)(?:-\S+)?) (.+)")
+        groups = pattern.match(server_version)
+        if not groups:
+            raise ValueError("Version string \"%s\" does not match expected format" % server_version)
+        result = []
+        for group in groups.groups():
+            result.append(group)
+        return result
 
     def autoinc_sql(self, table, column):
         sequence_name = get_autoinc_sequence_name(self, table)
