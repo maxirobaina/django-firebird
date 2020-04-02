@@ -321,6 +321,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         actions = []
         null_actions = []
         post_actions = []
+        fragment = None
         # Type change?
         if old_type != new_type:
             fragment, other_actions = self._alter_column_type_sql(
