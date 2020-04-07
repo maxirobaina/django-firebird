@@ -231,13 +231,17 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
             else 'INDEX'
           end AS constraint_type,
 
-          s.RDB$FIELD_NAME AS field_name,
+          case
+            when s.RDB$FIELD_NAME is not null then s.RDB$FIELD_NAME
+            else ''
+          end AS field_name,
+          
           i2.RDB$RELATION_NAME AS references_table,
           s2.RDB$FIELD_NAME AS references_field,
           i.RDB$UNIQUE_FLAG,
           i.RDB$INDEX_TYPE
         FROM RDB$INDEX_SEGMENTS s
-        LEFT JOIN RDB$INDICES i ON i.RDB$INDEX_NAME = s.RDB$INDEX_NAME
+        FULL JOIN RDB$INDICES i ON i.RDB$INDEX_NAME = s.RDB$INDEX_NAME
         LEFT JOIN RDB$RELATION_CONSTRAINTS rc ON rc.RDB$INDEX_NAME = s.RDB$INDEX_NAME
         LEFT JOIN RDB$REF_CONSTRAINTS refc ON rc.RDB$CONSTRAINT_NAME = refc.RDB$CONSTRAINT_NAME
         LEFT JOIN RDB$RELATION_CONSTRAINTS rc2 ON rc2.RDB$CONSTRAINT_NAME = refc.RDB$CONST_NAME_UQ

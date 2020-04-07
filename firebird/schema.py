@@ -1,16 +1,32 @@
 import logging
 import datetime
 
+from django.db.backends.ddl_references import Statement, Table, IndexName, IndexColumns, TableColumns
 from django.utils import six
 from django.utils.encoding import force_str
 from django.db.models import Index
-from django.db.models.fields import AutoField
+from django.db.models.fields import AutoField, CharField
 from django.db.backends.base.schema import BaseDatabaseSchemaEditor
 from django.db.backends.base.schema import _related_non_m2m_objects, _is_relevant_relation
 
 from fdb import TransactionContext
 
 logger = logging.getLogger('django.db.backends.schema')
+
+
+class FirebirdColumns(TableColumns):
+    """Hold a reference to one or many columns."""
+
+    def __init__(self, table, columns, quote_name, col_suffixes=()):
+        self.quote_name = quote_name
+        self.col_suffixes = col_suffixes
+        super().__init__(table, columns)
+
+    def __str__(self):
+        def col_str(column, idx):
+            return self.quote_name(column)
+
+        return ', '.join(col_str(column, idx) for idx, column in enumerate(self.columns))
 
 
 class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
@@ -21,6 +37,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
     sql_delete_column = "ALTER TABLE %(table)s DROP %(column)s"
     sql_rename_column = "ALTER TABLE %(table)s ALTER %(old_column)s TO %(new_column)s"
     sql_create_fk = "ALTER TABLE %(table)s ADD CONSTRAINT %(name)s FOREIGN KEY (%(column)s) REFERENCES %(to_table)s (%(to_column)s)"
+    sql_create_hash_index = "CREATE INDEX %(name)s ON %(table)s computed by(hash(%(columns)s))"
 
     def _alter_column_set_null(self, table_name, column_name, is_null):
         engine_ver = str(self.connection.connection.engine_version).split('.')
@@ -60,6 +77,29 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             cursor.execute(sql)
             res = cursor.fetchone()
         return True if res else False
+
+    def add_index(self, model, index):
+        """Add an index on a model."""
+        create_statement = None
+        try:
+            create_statement = index.create_sql(model, self)
+            self.execute(create_statement, params=None)
+        except Exception as e:
+            # If the creation of the index failed with
+            # the error 'key size too big for index',
+            # then create an index with hash expression
+            if "336068726" in str(e):
+                create_statement.template = self.sql_create_hash_index
+                self.execute(create_statement, params=None)
+
+    def alter_db_table(self, model, old_db_table, new_db_table):
+        """Rename the table a model points to."""
+        if (old_db_table == new_db_table or
+            (self.connection.features.ignores_table_name_case and
+                old_db_table.lower() == new_db_table.lower())):
+            return
+        # Not supported yet
+        return
 
     def add_field(self, model, field):
         """
@@ -542,6 +582,40 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         if self.connection.features.connection_persists_old_columns:
             self.connection.commit()
 
+    def _create_index_sql(self, model, fields, *, name=None, suffix='', using='',
+                          db_tablespace=None, col_suffixes=(), sql=None, opclasses=(),
+                          condition=None):
+        """
+        Return the SQL statement to create the index for one or several fields.
+        `sql` can be specified if the syntax differs from the standard (GIS
+        indexes, ...).
+        """
+        tablespace_sql = self._get_index_tablespace_sql(model, fields, db_tablespace=db_tablespace)
+        columns = [field.column for field in fields]
+        sql_create_index = sql or self.sql_create_index
+        table = model._meta.db_table
+
+        def create_index_name(*args, **kwargs):
+            nonlocal name
+            if name is None:
+                name = self._create_index_name(*args, **kwargs)
+            return self.quote_name(name)
+
+        return Statement(
+            sql_create_index,
+            table=Table(table, self.quote_name),
+            name=IndexName(table, columns, suffix, create_index_name),
+            using=using,
+            columns=self._index_columns(table, columns, col_suffixes, opclasses),
+            extra=tablespace_sql,
+            condition=(' WHERE ' + condition) if condition else '',
+        )
+
+    def _index_columns(self, table, columns, col_suffixes, opclasses):
+        if opclasses:
+            return IndexColumns(table, columns, self.quote_name, col_suffixes=col_suffixes, opclasses=opclasses)
+        return FirebirdColumns(table, columns, self.quote_name, col_suffixes)
+
     def prepare_default(self, value):
         if isinstance(value, bool):
             return "1" if value else "0"
@@ -559,6 +633,80 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             return "NULL"
         else:
             return force_str(value)
+
+    # Actions
+
+    def create_model(self, model):
+        """
+        Create a table and any accompanying indexes or unique constraints for
+        the given `model`.
+        """
+        # Create column SQL, add FK deferreds if needed
+        column_sqls = []
+        params = []
+        for field in model._meta.local_fields:
+            if isinstance(field, CharField) and field.max_length > 32765:
+                field.max_length = 8191 # max for 4-byte character sets
+            # SQL
+            definition, extra_params = self.column_sql(model, field)
+            if definition is None:
+                continue
+            # Check constraints can go on the column SQL here
+            db_params = field.db_parameters(connection=self.connection)
+            if db_params['check']:
+                definition += " " + self.sql_check_constraint % db_params
+            # Autoincrement SQL (for backends with inline variant)
+            col_type_suffix = field.db_type_suffix(connection=self.connection)
+            if col_type_suffix:
+                definition += " %s" % col_type_suffix
+            params.extend(extra_params)
+            # FK
+            if field.remote_field and field.db_constraint:
+                to_table = field.remote_field.model._meta.db_table
+                to_column = field.remote_field.model._meta.get_field(field.remote_field.field_name).column
+                if self.sql_create_inline_fk:
+                    definition += " " + self.sql_create_inline_fk % {
+                        "to_table": self.quote_name(to_table),
+                        "to_column": self.quote_name(to_column),
+                    }
+                elif self.connection.features.supports_foreign_keys:
+                    self.deferred_sql.append(self._create_fk_sql(model, field, "_fk_%(to_table)s_%(to_column)s"))
+            # Add the SQL to our big list
+            column_sqls.append("%s %s" % (
+                self.quote_name(field.column),
+                definition,
+            ))
+            # Autoincrement SQL (for backends with post table definition variant)
+            if field.get_internal_type() in ("AutoField", "BigAutoField"):
+                autoinc_sql = self.connection.ops.autoinc_sql(model._meta.db_table, field.column)
+                if autoinc_sql:
+                    self.deferred_sql.extend(autoinc_sql)
+
+        # Add any unique_togethers (always deferred, as some fields might be
+        # created afterwards, like geometry fields with some backends)
+        for fields in model._meta.unique_together:
+            columns = [model._meta.get_field(field).column for field in fields]
+            self.deferred_sql.append(self._create_unique_sql(model, columns))
+        constraints = [constraint.constraint_sql(model, self) for constraint in model._meta.constraints]
+        # Make the table
+        sql = self.sql_create_table % {
+            "table": self.quote_name(model._meta.db_table),
+            "definition": ", ".join(constraint for constraint in (*column_sqls, *constraints) if constraint),
+        }
+        if model._meta.db_tablespace:
+            tablespace_sql = self.connection.ops.tablespace_sql(model._meta.db_tablespace)
+            if tablespace_sql:
+                sql += ' ' + tablespace_sql
+        # Prevent using [] as params, in the case a literal '%' is used in the definition
+        self.execute(sql, params or None)
+
+        # Add any field index and index_together's (deferred as SQLite _remake_table needs it)
+        self.deferred_sql.extend(self._model_indexes_sql(model))
+
+        # Make M2M tables
+        for field in model._meta.local_many_to_many:
+            if field.remote_field.through._meta.auto_created:
+                self.create_model(field.remote_field.through)
 
     def delete_model(self, model):
         super(DatabaseSchemaEditor, self).delete_model(model)

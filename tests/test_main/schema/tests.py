@@ -439,6 +439,51 @@ class SchemaTests(TransactionTestCase):
         self.assertEqual(columns['age'][0], "IntegerField")
         self.assertEqual(columns['age'][1][6], True)
 
+    def test_add_big_charfield(self):
+        class LocalBook(Model):
+            author = IntegerField()
+            title = CharField(max_length=44096)
+            pub_date = DateTimeField()
+
+            class Meta:
+                app_label = 'schema'
+                apps = new_apps
+
+        self.local_models = [LocalBook]
+
+        # Create the tables
+        with connection.schema_editor() as editor:
+            editor.create_model(LocalBook)
+
+    def test_add_big_charfield_with_index(self):
+        class LocalBook(Model):
+            author = IntegerField()
+            title = CharField(max_length=4096)
+            pub_date = DateTimeField()
+
+            class Meta:
+                app_label = 'schema'
+                apps = new_apps
+
+        self.local_models = [LocalBook]
+
+        # Create the tables
+        with connection.schema_editor() as editor:
+            editor.create_model(LocalBook)
+
+        index_name = 'big_varchar_idx'
+        # Add the index
+        index = Index(fields=['title'], name=index_name)
+        with connection.schema_editor() as editor:
+            editor.add_index(LocalBook, index)
+        if connection.features.supports_index_column_ordering:
+            if connection.features.uppercases_column_names:
+                index_name = index_name.upper()
+            self.assertIndexOrder(LocalBook._meta.db_table, index_name, ['ASC'])
+        # Drop the index
+        with connection.schema_editor() as editor:
+            editor.remove_index(LocalBook, index)
+
     def test_add_field_temp_default(self):
         """
         Tests adding fields to models with a temporary default
