@@ -355,7 +355,10 @@ class DatabaseWrapper(BaseDatabaseWrapper):
                 table = ''
                 with self.cursor() as cursor:
                     cursor.execute(select_relation)
-                    table = '"' + cursor.fetchone()[0].strip() + '"'
+                    res = cursor.fetchone()
+                    if not res:
+                        continue
+                    table = '"' + res[0].strip() + '"'
                 select_django_constraint_segment = """
                     select django$field_name as field_name from django$constraint_segment s 
                     where s.django$constraint_name = '%s'

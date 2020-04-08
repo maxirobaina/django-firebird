@@ -38,6 +38,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
     sql_rename_column = "ALTER TABLE %(table)s ALTER %(old_column)s TO %(new_column)s"
     sql_create_fk = "ALTER TABLE %(table)s ADD CONSTRAINT %(name)s FOREIGN KEY (%(column)s) REFERENCES %(to_table)s (%(to_column)s)"
     sql_create_hash_index = "CREATE INDEX %(name)s ON %(table)s computed by(hash(%(columns)s))"
+    sql_create_unique_hash_index = "CREATE UNIQUE INDEX %(name)s ON %(table)s computed by(hash(%(columns)s))"
 
     def _alter_column_set_null(self, table_name, column_name, is_null):
         engine_ver = str(self.connection.connection.engine_version).split('.')
@@ -91,6 +92,45 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             if "336068726" in str(e):
                 create_statement.template = self.sql_create_hash_index
                 self.execute(create_statement, params=None)
+
+    def alter_unique_together(self, model, old_unique_together, new_unique_together):
+        """
+        Deal with a model changing its unique_together. The input
+        unique_togethers must be doubly-nested, not the single-nested
+        ["foo", "bar"] format.
+        """
+        olds = {tuple(fields) for fields in old_unique_together}
+        news = {tuple(fields) for fields in new_unique_together}
+        # Deleted uniques
+        for fields in olds.difference(news):
+            try:
+                self._delete_composed_index(model, fields, {'unique': True}, self.sql_delete_unique)
+            except Exception as e:
+                with self.connection.cursor() as cursor:
+                    constraints = self.connection.introspection.get_constraints(cursor, model._meta.db_table)
+                result = None
+                expression = ('(hash(%s))' % ' || '.join(self.quote_name(column) for column in fields)).lower()
+                for name, infodict in constraints.items():
+                    if infodict['expression_source'] == expression:
+                        if infodict['unique'] and infodict['index']:
+                            result = name
+                            break
+                self.execute(self._delete_constraint_sql(self.sql_delete_index, model, result))
+        # Created uniques
+        for fields in news.difference(olds):
+            columns = [model._meta.get_field(field).column for field in fields]
+            create_statement = self._create_unique_sql(model, columns)
+            try:
+                self.execute(create_statement)
+            except Exception as e:
+                # If the creation of the unique failed with
+                # the error 'key size too big for index',
+                # then create an unique index with hash expression
+                if "336068726" in str(e):
+                    cols = ' || '.join(self.quote_name(column) for column in create_statement.parts['columns'].columns)
+                    create_statement.template = self.sql_create_unique_hash_index
+                    create_statement.parts['columns'] = cols
+                    self.execute(create_statement, params=None)
 
     def alter_db_table(self, model, old_db_table, new_db_table):
         """Rename the table a model points to."""

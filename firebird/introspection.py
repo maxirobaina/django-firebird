@@ -239,7 +239,8 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
           i2.RDB$RELATION_NAME AS references_table,
           s2.RDB$FIELD_NAME AS references_field,
           i.RDB$UNIQUE_FLAG,
-          i.RDB$INDEX_TYPE
+          i.RDB$INDEX_TYPE,
+          i.RDB$EXPRESSION_SOURCE as expression_source
         FROM RDB$INDEX_SEGMENTS s
         FULL JOIN RDB$INDICES i ON i.RDB$INDEX_NAME = s.RDB$INDEX_NAME
         LEFT JOIN RDB$RELATION_CONSTRAINTS rc ON rc.RDB$INDEX_NAME = s.RDB$INDEX_NAME
@@ -250,11 +251,12 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         WHERE i.RDB$RELATION_NAME = %s
         ORDER BY s.RDB$FIELD_POSITION
         """ % (tbl_name,))
-        for constraint_name, constraint_type, column, other_table, other_column, unique, order in cursor.fetchall():
+        for constraint_name, constraint_type, column, other_table, other_column, unique, order, expression in cursor.fetchall():
             primary_key = False
             foreign_key = None
             check = False
             index = False
+            expression_source = None
             order = 'DESC' if order else 'ASC'
             constraint = constraint_name.strip()
             constraint_type = constraint_type.strip()
@@ -263,6 +265,8 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
                 other_table = other_table.strip().lower()
             if other_column:
                 other_column = other_column.strip().lower()
+            if expression:
+                expression_source = expression.strip().lower()
 
             if constraint_type == 'PRIMARY KEY':
                 primary_key = True
@@ -283,7 +287,8 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
                     "foreign_key": foreign_key,
                     "check": check,
                     "index": index,
-                    "type": Index.suffix
+                    "type": Index.suffix,
+                    "expression_source": expression_source
                 }
             # Record the details
             constraints[constraint]['columns'].append(column)

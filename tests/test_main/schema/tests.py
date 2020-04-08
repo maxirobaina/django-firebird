@@ -484,6 +484,27 @@ class SchemaTests(TransactionTestCase):
         with connection.schema_editor() as editor:
             editor.remove_index(LocalBook, index)
 
+    def test_unique_together_big_varchar(self):
+        class LocalBook(Model):
+            author = IntegerField()
+            title = CharField(max_length=4096)
+            pub_date = DateTimeField()
+
+            class Meta:
+                app_label = 'schema'
+                apps = new_apps
+        # Create the table
+        with connection.schema_editor() as editor:
+            editor.create_model(LocalBook)
+        # Ensure the fields are unique to begin with
+        self.assertEqual(LocalBook._meta.unique_together, ())
+        # Add the unique_together constraint
+        with connection.schema_editor() as editor:
+            editor.alter_unique_together(LocalBook, [], [['author', 'title']])
+        # Alter it back
+        with connection.schema_editor() as editor:
+            editor.alter_unique_together(LocalBook, [['author', 'title']], [])
+
     def test_add_field_temp_default(self):
         """
         Tests adding fields to models with a temporary default
