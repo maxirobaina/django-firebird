@@ -89,9 +89,8 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             # If the creation of the index failed with
             # the error 'key size too big for index',
             # then create an index with hash expression
-            if "336068726" in str(e):
-                create_statement.template = self.sql_create_hash_index
-                self.execute(create_statement, params=None)
+            create_statement.template = self.sql_create_hash_index
+            self.execute(create_statement, params=None)
 
     def alter_unique_together(self, model, old_unique_together, new_unique_together):
         """
@@ -129,11 +128,10 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             # If the creation of the unique failed with
             # the error 'key size too big for index',
             # then create an unique index with hash expression
-            if "336068726" in str(e):
-                cols = ' || '.join(self.quote_name(column) for column in create_statement.parts['columns'].columns)
-                create_statement.template = self.sql_create_unique_hash_index
-                create_statement.parts['columns'] = cols
-                self.execute(create_statement, params=None)
+            cols = ' || '.join(self.quote_name(column) for column in create_statement.parts['columns'].columns)
+            create_statement.template = self.sql_create_unique_hash_index
+            create_statement.parts['columns'] = cols
+            self.execute(create_statement, params=None)
 
     def alter_db_table(self, model, old_db_table, new_db_table):
         """Rename the table a model points to."""
@@ -325,18 +323,9 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
                 fks_dropped.add((old_field.column,))
                 self.execute(self._delete_constraint_sql(self.sql_delete_fk, model, fk_name))
         # Has unique been removed?
-        unique = None
-        for uni in model._meta.unique_together:
-            if old_field.column in uni:
-                unique = uni
-                break
-        if unique or (
-                old_field.unique and (not new_field.unique or (not old_field.primary_key and new_field.primary_key))):
+        if old_field.unique and (not new_field.unique or (not old_field.primary_key and new_field.primary_key)):
             # Find the unique constraint for this field
-            if unique:
-                constraint_names = self._constraint_names(model, unique, unique=True)
-            else:
-                constraint_names = self._constraint_names(model, [old_field.column], unique=True)
+            constraint_names = self._constraint_names(model, [old_field.column], unique=True)
             if strict and len(constraint_names) != 1:
                 raise ValueError("Found wrong number (%s) of unique constraints for %s.%s" % (
                     len(constraint_names),
@@ -527,13 +516,9 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         # Added a unique?
         if (not old_field.unique and new_field.unique) or (
                 old_field.primary_key and not new_field.primary_key and new_field.unique
-        ) or unique:
-            if unique:
-                # self.execute(self._create_unique_sql(model, unique))
-                self.create_unique(self._create_unique_sql(model, unique))
-            else:
-                # self.execute(self._create_unique_sql(model, [new_field.column]))
-                self.create_unique(self._create_unique_sql(model, [new_field.column]))
+        ):
+            # self.execute(self._create_unique_sql(model, [new_field.column]))
+            self.create_unique(self._create_unique_sql(model, [new_field.column]))
         # Added an index? Add an index if db_index switched to True or a unique
         # constraint will no longer be used in lieu of an index. The following
         # lines from the truth table show all True cases; the rest are False:
@@ -748,12 +733,52 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             self.create_unique(self._create_unique_sql(model, columns))
 
         # Add any field index and index_together's (deferred as SQLite _remake_table needs it)
-        self.deferred_sql.extend(self._model_indexes_sql(model))
+        self._model_indexes_sql(model)
 
         # Make M2M tables
         for field in model._meta.local_many_to_many:
             if field.remote_field.through._meta.auto_created:
                 self.create_model(field.remote_field.through)
+
+    def _model_indexes_sql(self, model):
+        """
+        Return a list of all index SQL statements (field indexes,
+        index_together, Meta.indexes) for the specified model.
+        """
+        if not model._meta.managed or model._meta.proxy or model._meta.swapped:
+            return []
+        output = []
+        for field in model._meta.local_fields:
+            self._field_indexes_sql(model, field)
+
+        for field_names in model._meta.index_together:
+            fields = [model._meta.get_field(field) for field in field_names]
+            create_statement = self._create_index_sql(model, fields, suffix="_idx")
+            self.add_index(create_statement)
+
+        for index in model._meta.indexes:
+            self.add_index(self, model, index)
+        return output
+
+    def _field_indexes_sql(self, model, field):
+        """
+        Return a list of all index SQL statements for the specified field.
+        """
+        output = []
+        if self._field_should_be_indexed(model, field):
+            create_statement = self._create_index_sql(model, [field])
+            self.add_index(create_statement)
+        return output
+
+    def add_index(self, statement):
+        try:
+            self.execute(statement, params=None)
+        except Exception as e:
+            # If the creation of the index failed with
+            # the error 'key size too big for index',
+            # then create an index with hash expression
+            statement.template = self.sql_create_hash_index
+            self.execute(statement, params=None)
 
     def delete_model(self, model):
         super(DatabaseSchemaEditor, self).delete_model(model)
