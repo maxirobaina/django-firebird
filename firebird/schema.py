@@ -829,7 +829,6 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
                     cur = tr.cursor()
                     cur.execute(str(sql), params)
                 except Exception as e:
-                    print(e)
                     raise e
         else:
             super(DatabaseSchemaEditor, self).execute(sql, params)
