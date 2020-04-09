@@ -754,7 +754,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         for field_names in model._meta.index_together:
             fields = [model._meta.get_field(field) for field in field_names]
             create_statement = self._create_index_sql(model, fields, suffix="_idx")
-            self.add_index(create_statement)
+            self.create_index(create_statement)
 
         for index in model._meta.indexes:
             self.add_index(self, model, index)
@@ -767,10 +767,10 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         output = []
         if self._field_should_be_indexed(model, field):
             create_statement = self._create_index_sql(model, [field])
-            self.add_index(create_statement)
+            self.create_index(create_statement)
         return output
 
-    def add_index(self, statement):
+    def create_index(self, statement):
         try:
             self.execute(statement, params=None)
         except Exception as e:
