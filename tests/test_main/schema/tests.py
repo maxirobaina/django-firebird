@@ -485,12 +485,36 @@ class SchemaTests(TransactionTestCase):
             editor.remove_index(LocalBook, index)
 
     def test_unique_together_big_varchar(self):
+        class LocalBookUnique(Model):
+            author = IntegerField()
+            title = CharField(max_length=4096)
+            pub_date = DateTimeField()
+
+            class Meta:
+                app_label = 'schema'
+                apps = new_apps
+        # Create the table
+        with connection.schema_editor() as editor:
+            editor.create_model(LocalBookUnique)
+        # Ensure the fields are unique to begin with
+        self.assertEqual(LocalBookUnique._meta.unique_together, ())
+        # Add the unique_together constraint
+        with connection.schema_editor() as editor:
+            editor.alter_unique_together(LocalBookUnique, [], [['author', 'title']])
+        # Alter it back
+        with connection.schema_editor() as editor:
+            editor.alter_unique_together(LocalBookUnique, [['author', 'title']], [])
+
+    def test_unique_together_alter_big_varchar(self):
         class LocalBook(Model):
             author = IntegerField()
             title = CharField(max_length=4096)
             pub_date = DateTimeField()
 
             class Meta:
+                # unique_together = [
+                #     ('author', 'title'),
+                # ]
                 app_label = 'schema'
                 apps = new_apps
         # Create the table
@@ -501,9 +525,41 @@ class SchemaTests(TransactionTestCase):
         # Add the unique_together constraint
         with connection.schema_editor() as editor:
             editor.alter_unique_together(LocalBook, [], [['author', 'title']])
+        # Alter field
+        old_field = LocalBook._meta.get_field("title")
+        new_field = CharField(max_length=4097)
+        new_field.set_attributes_from_name("title")
+        with connection.schema_editor() as editor:
+            editor.alter_field(LocalBook, old_field, new_field, strict=True)
         # Alter it back
         with connection.schema_editor() as editor:
             editor.alter_unique_together(LocalBook, [['author', 'title']], [])
+
+    def test_alter_numeric_with_big_varchar_unique(self):
+        """
+        Changing a field type shouldn't affect the not null status.
+        """
+        class UniqueTestLocal(Model):
+            year = IntegerField()
+            slug = CharField(max_length=95)
+
+            class Meta:
+                app_label = 'schema'
+                apps = new_apps
+                unique_together = ["year", "slug"]
+        self.local_models = [UniqueTestLocal]
+
+        with connection.schema_editor() as editor:
+            editor.create_model(UniqueTestLocal)
+        with self.assertRaises(IntegrityError):
+            UniqueTestLocal.objects.create(year=None, slug='aaa')
+        old_field = UniqueTestLocal._meta.get_field("slug")
+        new_field = CharField(max_length=4095)
+        new_field.set_attributes_from_name("slug")
+        with connection.schema_editor() as editor:
+            editor.alter_field(UniqueTestLocal, old_field, new_field, strict=True)
+        with self.assertRaises(IntegrityError):
+            UniqueTestLocal.objects.create(year=None, slug='bbb')
 
     def test_add_field_temp_default(self):
         """
@@ -1841,13 +1897,13 @@ class SchemaTests(TransactionTestCase):
         self.assertNotIn('title', self.get_indexes(Author._meta.db_table))
         index_name = 'author_name_idx'
         # Add the index
-        index = Index(fields=['name', '-weight'], name=index_name)
+        index = Index(fields=['name', 'weight'], name=index_name)
         with connection.schema_editor() as editor:
             editor.add_index(Author, index)
         if connection.features.supports_index_column_ordering:
             if connection.features.uppercases_column_names:
                 index_name = index_name.upper()
-            self.assertIndexOrder(Author._meta.db_table, index_name, ['ASC', 'DESC'])
+            self.assertIndexOrder(Author._meta.db_table, index_name, ['ASC', 'ASC'])
         # Drop the index
         with connection.schema_editor() as editor:
             editor.remove_index(Author, index)

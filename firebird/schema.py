@@ -120,17 +120,20 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         for fields in news.difference(olds):
             columns = [model._meta.get_field(field).column for field in fields]
             create_statement = self._create_unique_sql(model, columns)
-            try:
-                self.execute(create_statement)
-            except Exception as e:
-                # If the creation of the unique failed with
-                # the error 'key size too big for index',
-                # then create an unique index with hash expression
-                if "336068726" in str(e):
-                    cols = ' || '.join(self.quote_name(column) for column in create_statement.parts['columns'].columns)
-                    create_statement.template = self.sql_create_unique_hash_index
-                    create_statement.parts['columns'] = cols
-                    self.execute(create_statement, params=None)
+            self.create_unique(create_statement)
+
+    def create_unique(self, create_statement):
+        try:
+            self.execute(create_statement)
+        except Exception as e:
+            # If the creation of the unique failed with
+            # the error 'key size too big for index',
+            # then create an unique index with hash expression
+            if "336068726" in str(e):
+                cols = ' || '.join(self.quote_name(column) for column in create_statement.parts['columns'].columns)
+                create_statement.template = self.sql_create_unique_hash_index
+                create_statement.parts['columns'] = cols
+                self.execute(create_statement, params=None)
 
     def alter_db_table(self, model, old_db_table, new_db_table):
         """Rename the table a model points to."""
@@ -526,9 +529,11 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
                 old_field.primary_key and not new_field.primary_key and new_field.unique
         ) or unique:
             if unique:
-                self.execute(self._create_unique_sql(model, unique))
+                # self.execute(self._create_unique_sql(model, unique))
+                self.create_unique(self._create_unique_sql(model, unique))
             else:
-                self.execute(self._create_unique_sql(model, [new_field.column]))
+                # self.execute(self._create_unique_sql(model, [new_field.column]))
+                self.create_unique(self._create_unique_sql(model, [new_field.column]))
         # Added an index? Add an index if db_index switched to True or a unique
         # constraint will no longer be used in lieu of an index. The following
         # lines from the truth table show all True cases; the rest are False:
@@ -722,11 +727,6 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
                 if autoinc_sql:
                     self.deferred_sql.extend(autoinc_sql)
 
-        # Add any unique_togethers (always deferred, as some fields might be
-        # created afterwards, like geometry fields with some backends)
-        for fields in model._meta.unique_together:
-            columns = [model._meta.get_field(field).column for field in fields]
-            self.deferred_sql.append(self._create_unique_sql(model, columns))
         constraints = [constraint.constraint_sql(model, self) for constraint in model._meta.constraints]
         # Make the table
         sql = self.sql_create_table % {
@@ -739,6 +739,13 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
                 sql += ' ' + tablespace_sql
         # Prevent using [] as params, in the case a literal '%' is used in the definition
         self.execute(sql, params or None)
+
+        # Add any unique_togethers (always deferred, as some fields might be
+        # created afterwards, like geometry fields with some backends)
+        for fields in model._meta.unique_together:
+            columns = [model._meta.get_field(field).column for field in fields]
+            # self.deferred_sql.append(self._create_unique_sql(model, columns))
+            self.create_unique(self._create_unique_sql(model, columns))
 
         # Add any field index and index_together's (deferred as SQLite _remake_table needs it)
         self.deferred_sql.extend(self._model_indexes_sql(model))
