@@ -647,7 +647,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         return FirebirdColumns(table, columns, self.quote_name, col_suffixes)
 
     def prepare_default(self, value):
-        if isinstance(value, bool):
+        if isinstance(value, bool) and int(self.connection.ops.firebird_version[3]) < 3:
             return "1" if value else "0"
         s = force_str(value)
         return self.quote_value(s)

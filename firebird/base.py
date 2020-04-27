@@ -48,7 +48,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         'AutoField': 'integer',
         'BigAutoField': 'bigint',
         'BinaryField': 'blob sub_type 0',
-        'BooleanField': 'smallint',
+        'BooleanField': 'smallint', # for firebird 3 it changes in init_connection_state
         'CharField': 'varchar(%(max_length)s)',
         'CommaSeparatedIntegerField': 'varchar(%(max_length)s)',
         'DateField': 'date',
@@ -62,7 +62,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         'BigIntegerField': 'bigint',
         'IPAddressField': 'char(15)',
         'GenericIPAddressField': 'char(39)',
-        'NullBooleanField': 'smallint',
+        'NullBooleanField': 'smallint', # for firebird 3 it changes in init_connection_state
         'OneToOneField': 'integer',
         'PositiveIntegerField': 'integer',
         'PositiveSmallIntegerField': 'smallint',
@@ -74,7 +74,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
     }
 
     data_type_check_constraints = {
-        'BooleanField': '%(qn_column)s IN (0,1)',
+        'BooleanField': '%(qn_column)s IN (0,1)', # for firebird 3 it changes in init_connection_state
         'NullBooleanField': '(%(qn_column)s IN (0,1)) OR (%(qn_column)s IS NULL)',
         'PositiveIntegerField': '%(qn_column)s >= 0',
         'PositiveSmallIntegerField': '%(qn_column)s >= 0',
@@ -181,7 +181,11 @@ class DatabaseWrapper(BaseDatabaseWrapper):
 
     def init_connection_state(self):
         """Initializes the database connection settings."""
-        pass
+        if int(self.ops.firebird_version[3]) >= 3:
+            self.data_types['BooleanField'] = 'boolean'
+            self.data_types['NullBooleanField'] = 'boolean'
+            self.data_type_check_constraints['BooleanField'] = '%(qn_column)s IN (False,True)'
+            self.data_type_check_constraints['NullBooleanField'] = '(%(qn_column)s IN (False,True)) OR (%(qn_column)s IS NULL)'
 
     def create_cursor(self, name=None):
         """Creates a cursor. Assumes that a connection is established."""
