@@ -201,7 +201,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         disabled and will need to be reenabled.
         """
         self.disable_constraints()
-        return False
+        return True
 
     def enable_constraint_checking(self):
         """
