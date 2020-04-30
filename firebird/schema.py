@@ -37,6 +37,9 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
     sql_delete_column = "ALTER TABLE %(table)s DROP %(column)s"
     sql_rename_column = "ALTER TABLE %(table)s ALTER %(old_column)s TO %(new_column)s"
     sql_create_fk = "ALTER TABLE %(table)s ADD CONSTRAINT %(name)s FOREIGN KEY (%(column)s) REFERENCES %(to_table)s (%(to_column)s)"
+
+    # Important!!!
+    # If an index is created or a unique on a large VARCHAR field, the expression with hash function is used
     sql_create_hash_index = "CREATE INDEX %(name)s ON %(table)s computed by(hash(%(columns)s))"
     sql_create_unique_hash_index = "CREATE UNIQUE INDEX %(name)s ON %(table)s computed by(hash(%(columns)s))"
 
@@ -80,7 +83,22 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         return True if res else False
 
     def add_index(self, model, index):
-        """Add an index on a model."""
+        """
+        Add an index on a model.
+
+        Args:
+            model (Model): Model of table
+            index (Index): Index for creation
+
+        .. important::
+
+           Firebird does not support creating indexes to big VARCHAR fields,
+           so an expression with hash function is used when creation error.
+           https://firebirdsql.org/refdocs/langrefupd20-create-index.html#langrefupd20-creatind-keylength
+
+        Note:
+           If there is an error when create index, we try to create index with hash.
+        """
         create_statement = None
         try:
             create_statement = index.create_sql(model, self)
@@ -122,6 +140,21 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             self.create_unique(create_statement)
 
     def create_unique(self, create_statement):
+        """
+        Creates an unique constraint by executing a statement
+
+        Args:
+            create_statement (Statement): Statement to execute
+
+        .. important::
+
+           Firebird does not support creating uniques to big VARCHAR fields,
+           so an expression with hash function is used when creation error.
+           https://firebirdsql.org/refdocs/langrefupd20-create-index.html#langrefupd20-creatind-keylength
+
+        Note:
+           If there is an error when create unique, we try to create unique with hash.
+        """
         try:
             self.execute(create_statement)
         except Exception as e:
@@ -647,6 +680,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         return FirebirdColumns(table, columns, self.quote_name, col_suffixes)
 
     def prepare_default(self, value):
+        # If the major server version is less than 3 then use `smallint` for the boolean field
         if isinstance(value, bool) and int(self.connection.ops.firebird_version[3]) < 3:
             return "1" if value else "0"
         s = force_str(value)
@@ -812,13 +846,23 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
     def execute(self, sql, params=[]):
         """
         Executes the given SQL statement, with optional parameters.
+
+        Args:
+            sql (str): SQL query to execute
+            params (list): list of parameters
+
+        .. important::
+
+            If DDL and DML statements are executed in one transaction,
+            then DML statements will not see the changes of the DDL statements.
+            It is necessary to commit all previous statements so that
+            follow statements can see changes previous ones.
+
+        Note:
+           This requires that `DatabaseFeatures.autocommits_when_autocommit_is_off` feature is True
         """
         # print("schema:", sql)
 
-        # If DDL and DML statements are executed in one transaction,
-        # then DML statements will not see the changes of the DDL statements.
-        # It is necessary to commit all previous statements so that
-        # follow statements can see changes previous ones.
         if self.connection.features.autocommits_when_autocommit_is_off:
             for tr in self.connection.connection.transactions:
                 if tr.active:

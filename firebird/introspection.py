@@ -9,6 +9,8 @@ from django.db.backends.base.introspection import (
     BaseDatabaseIntrospection, FieldInfo, TableInfo,
 )
 
+# Because we want to maintain compatibility with the previous
+# version of django, we check current version of django
 if (django.VERSION[0]==2 and django.VERSION[1] < 1) or django.VERSION[0] < 2:
     # if django.version < 2.1
     from django.utils.deprecation import RemovedInDjango21Warning
@@ -25,7 +27,7 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         13: 'TimeField',
         14: 'CharField',
         16: 'BigIntegerField',
-        23: 'BooleanField',
+        23: 'BooleanField', # since firebird 3 boolean fields are supported
         27: 'FloatField',
         35: 'DateTimeField',
         37: 'CharField',
@@ -113,6 +115,18 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         return items
 
     def get_sequences(self, cursor, table_name, table_fields=()):
+        """
+        Return sequences for table.
+
+        Args:
+            cursor (Cursor): Database cursor
+            table_name (str): table
+            table_fields (list): table fields
+
+        .. important::
+
+           Firebird does not support introspected sequences for table.
+        """
         pk_col = self.get_primary_key_column(cursor, table_name)
         return [{'table': table_name, 'column': pk_col}]
 

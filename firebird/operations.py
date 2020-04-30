@@ -28,8 +28,8 @@ class DatabaseOperations(BaseDatabaseOperations):
         'BigIntegerField': (Database.LONG_MIN, Database.LONG_MAX),
         'PositiveSmallIntegerField': (0, Database.SHRT_MAX),
         'PositiveIntegerField': (0, Database.INT_MAX),
-        'AutoField': (Database.INT_MIN, Database.INT_MAX),
-        'BigAutoField': (Database.LONG_MIN, Database.LONG_MAX),
+        'AutoField': (Database.INT_MIN, Database.INT_MAX), # since firebird 3 AutoField
+        'BigAutoField': (Database.LONG_MIN, Database.LONG_MAX), # and BigAutoField are supported
     }
 
     def __init__(self, connection, *args, **kwargs):
@@ -44,7 +44,16 @@ class DatabaseOperations(BaseDatabaseOperations):
         Access method for firebird_version property.
         firebird_version return the version number in an object list format
         Useful for ask for just a part of a version number.
-        (e.g. major version is firebird_version[0])
+
+        Indicies for parts:
+            PLATFORM = 0,
+            TYPE = 1,
+            FULL_VERSION = 2,
+            MAJOR = 3,
+            MINOR = 4,
+            VARIANT = 5,
+            BUILD = 6,
+            SERVER_NAME = 7.
         """
         server_version = self.connection.server_version
         pattern = re.compile(r"((\w{2})-(\w)(\d+)\.(\d+)\.(\d+)\.(\d+)(?:-\S+)?) (.+)")
@@ -271,6 +280,7 @@ class DatabaseOperations(BaseDatabaseOperations):
             value = value.read()
         if value is not None:
             db_charset = None
+            # Trying to get character set from connection parameters to convert a string value
             if 'charset' in connection.get_connection_params():
                 if connection.get_connection_params()['charset'] in charset_map:
                     db_charset = charset_map[connection.get_connection_params()['charset']]

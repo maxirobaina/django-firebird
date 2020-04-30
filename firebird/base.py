@@ -211,6 +211,17 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         self.enable_constraints()
 
     def disable_constraints(self):
+        """
+        Disables restrictions such as foreign keys, checks and unique.
+
+        .. important::
+
+           The server does not support explicit disabling of restrictions,
+           therefore, implementation is made using additional tables.
+
+        Note:
+           If there is an error when disable restrictions an exception is thrown.
+        """
         create_django_constraint = """
             create table django$constraint (
                 django$constraint_name varchar(31) not null constraint pk_djangocopyconstraint primary key,
@@ -331,6 +342,17 @@ class DatabaseWrapper(BaseDatabaseWrapper):
             editor.execute(sql)
 
     def enable_constraints(self):
+        """
+        Enables restrictions that have been disabled by calling the method `disable_constraint_checking`.
+
+        .. important::
+
+           The server does not support explicit disabling of restrictions,
+           therefore, implementation is made using additional tables.
+
+        Note:
+           If there is an error when enable restrictions an exception is thrown.
+        """
         editor = self.schema_editor()
         select_django_constraint = """
         select django$constraint_name as constraint_name,
@@ -428,6 +450,12 @@ class DatabaseWrapper(BaseDatabaseWrapper):
             print(e)
 
     def table_exists(self, table_name):
+        """
+        Checks whether a table with a specified name exists.
+
+        Args:
+            table_name (str): Table name for checking
+        """
         sql = """
             select null from rdb$relations where rdb$system_flag=0 and rdb$view_blr is null and rdb$relation_name='%s'
         """ % str(table_name).upper()
@@ -438,6 +466,20 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         return True if value else False
 
     def get_drop_constraints(self, query):
+        """
+        Returns objects that should be dropped when restrictions are disabled.
+
+        Args:
+            query (str): SQL query to execute
+
+        .. important::
+
+           The server does not support explicit disabling of restrictions,
+           therefore, implementation is made using additional tables.
+
+        Note:
+           If there is an error when execute query an exception is thrown.
+        """
         value = []
         with self.cursor() as cursor:
             cursor.execute(query)
