@@ -14,8 +14,8 @@ class DatabaseFeatures(BaseDatabaseFeatures):
     has_select_for_update_of = True
     supports_tablespaces = False
     supports_long_model_names = False
-    supports_timezones = True
-    has_zoneinfo_database = True
+    supports_timezones = False
+    has_zoneinfo_database = False
     uses_savepoints = True
     supports_paramstyle_pyformat = False
     connection_persists_old_columns = False
