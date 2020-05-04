@@ -1,6 +1,9 @@
+import decimal
+import re
 import uuid
 import datetime
 
+import django
 from django.conf import settings
 from django.db.backends.base.operations import BaseDatabaseOperations
 from django.db.backends import utils
@@ -10,6 +13,7 @@ from django.utils import six
 from django.utils import timezone
 from django.utils.encoding import force_bytes, force_text
 
+from fdb import charset_map
 from .base import Database
 
 
@@ -24,6 +28,8 @@ class DatabaseOperations(BaseDatabaseOperations):
         'BigIntegerField': (Database.LONG_MIN, Database.LONG_MAX),
         'PositiveSmallIntegerField': (0, Database.SHRT_MAX),
         'PositiveIntegerField': (0, Database.INT_MAX),
+        'AutoField': (Database.INT_MIN, Database.INT_MAX), # since firebird 3 AutoField
+        'BigAutoField': (Database.LONG_MIN, Database.LONG_MAX), # and BigAutoField are supported
     }
 
     def __init__(self, connection, *args, **kwargs):
@@ -38,10 +44,26 @@ class DatabaseOperations(BaseDatabaseOperations):
         Access method for firebird_version property.
         firebird_version return the version number in an object list format
         Useful for ask for just a part of a version number.
-        (e.g. major version is firebird_version[0])
+
+        Indicies for parts:
+            PLATFORM = 0,
+            TYPE = 1,
+            FULL_VERSION = 2,
+            MAJOR = 3,
+            MINOR = 4,
+            VARIANT = 5,
+            BUILD = 6,
+            SERVER_NAME = 7.
         """
         server_version = self.connection.server_version
-        return [int(val) for val in server_version.split()[-1].split('.')]
+        pattern = re.compile(r"((\w{2})-(\w)(\d+)\.(\d+)\.(\d+)\.(\d+)(?:-\S+)?) (.+)")
+        groups = pattern.match(server_version)
+        if not groups:
+            raise ValueError("Version string \"%s\" does not match expected format" % server_version)
+        result = []
+        for group in groups.groups():
+            result.append(group)
+        return result
 
     def autoinc_sql(self, table, column):
         sequence_name = get_autoinc_sequence_name(self, table)
@@ -68,7 +90,7 @@ class DatabaseOperations(BaseDatabaseOperations):
         return sequence_sql, trigger_sql
 
     def check_aggregate_support(self, aggregate_func):
-        from django.db.models.sql.aggregates import Avg
+        from django.db.models.aggregates import Avg
 
         INVALID = ('STDDEV_SAMP', 'STDDEV_POP', 'VAR_SAMP', 'VAR_POP')
         if aggregate_func.sql_function in INVALID:
@@ -88,7 +110,11 @@ class DatabaseOperations(BaseDatabaseOperations):
         Implements the date interval functionality for expressions.
         Do nothing here, we'll handle it in the combine_duration_expression method.
         """
-        return timedelta, []
+        ver = django.get_version()
+        if ver < '2.0.0':
+            return timedelta, []
+        else:
+            return timedelta
 
     def date_trunc_sql(self, lookup_type, field_name):
         if lookup_type == 'year':
@@ -101,11 +127,19 @@ class DatabaseOperations(BaseDatabaseOperations):
 
     def datetime_cast_date_sql(self, field_name, tzname):
         sql = 'CAST(%s AS DATE)' % field_name
-        return sql, []
+        ver = django.get_version()
+        if ver < '2.0.0':
+            return sql, []
+        else:
+            return sql
 
     def datetime_cast_time_sql(self, field_name, tzname):
         sql = 'CAST(%s AS TIME)' % field_name
-        return sql, []
+        ver = django.get_version()
+        if ver < '2.0.0':
+            return sql, []
+        else:
+            return sql
 
     def datetime_extract_sql(self, lookup_type, field_name, tzname):
         """
@@ -117,7 +151,11 @@ class DatabaseOperations(BaseDatabaseOperations):
             sql = "EXTRACT(WEEKDAY FROM %s) + 1" % field_name
         else:
             sql = "EXTRACT(%s FROM %s)" % (lookup_type.upper(), field_name)
-        return sql, []
+        ver = django.get_version()
+        if ver < '2.0.0':
+            return sql, []
+        else:
+            return sql
 
     def datetime_trunc_sql(self, lookup_type, field_name, tzname):
         """
@@ -144,7 +182,12 @@ class DatabaseOperations(BaseDatabaseOperations):
             sql = "%s||'-'||%s||'-'||%s||' '||%s||':'||%s||':00'" % (year, month, day, hh, mm)
         elif lookup_type == 'second':
             sql = "%s||'-'||%s||'-'||%s||' '||%s||':'||%s||':'||%s" % (year, month, day, hh, mm, ss)
-        return "CAST(%s AS TIMESTAMP)" % sql, []
+        ver = django.get_version()
+        result = "CAST(%s AS TIMESTAMP)" % sql
+        if ver < '2.0.0':
+            return result, []
+        else:
+            return result
 
     def time_trunc_sql(self, lookup_type, field_name):
         """
@@ -203,6 +246,10 @@ class DatabaseOperations(BaseDatabaseOperations):
     def max_name_length(self):
         return 31
 
+    def distinct_sql(self, fields, params):
+        # just keyword for firebird
+        return ['DISTINCT'], []
+
     def no_limit_value(self):
         return None
 
@@ -232,7 +279,15 @@ class DatabaseOperations(BaseDatabaseOperations):
         if isinstance(value, Database.BlobReader):
             value = value.read()
         if value is not None:
-            value = force_text(value)
+            db_charset = None
+            # Trying to get character set from connection parameters to convert a string value
+            if 'charset' in connection.get_connection_params():
+                if connection.get_connection_params()['charset'] in charset_map:
+                    db_charset = charset_map[connection.get_connection_params()['charset']]
+            if db_charset:
+                value = force_text(value, encoding=db_charset, errors='replace')
+            else:
+                value = force_text(value)
         return value
 
     def convert_binaryfield_value(self, value, expression, connection, context):
@@ -247,8 +302,9 @@ class DatabaseOperations(BaseDatabaseOperations):
 
     def convert_decimalfield_value(self, value, expression, connection, context):
         field = expression.field
+
         val = utils.format_number(value, field.max_digits, field.decimal_places)
-        value = utils.typecast_decimal(val)
+        value = decimal.Decimal.from_float(float(val))
         return value
 
     def convert_ipfield_value(self, value, expression, connection, context):
@@ -307,9 +363,13 @@ class DatabaseOperations(BaseDatabaseOperations):
             unit = 'second'
             value = str((decimal.Decimal(timedelta) * sign) / decimal.Decimal(1000000))
         elif isinstance(timedelta, six.string_types):
-            if timedelta.isdigit():
-                unit = 'second'
-                value = "(%s * %s) / 1000000" % (value, sign,)
+            if timedelta.isdigit() or not "timestamp".casefold() in timedelta.casefold():
+                unit = 'millisecond'
+                value = "(%s * %s) / 1000" % (timedelta, sign,)
+            elif not "timestamp".casefold() in sql.casefold() and not timedelta.isdigit():
+                unit = 'millisecond'
+                value = "(%s * %s) / 1000" % (sql, sign,)
+                return 'DATEADD(%s %s TO %s)' % (value, unit, timedelta)
             else:
                 return super(DatabaseOperations, self).combine_duration_expression(connector, sub_expressions)
         else:

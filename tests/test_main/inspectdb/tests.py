@@ -85,7 +85,7 @@ class InspectDBTestCase(TestCase):
         null_bool_field = ColumnTypes._meta.get_field('null_bool_field')
         null_bool_field_type = connection.features.introspected_boolean_field_type(null_bool_field)
         if 'BooleanField' in null_bool_field_type:
-            assertFieldType('null_bool_field', "models.{}()".format(null_bool_field_type))
+            assertFieldType('null_bool_field', "models.{}".format(null_bool_field_type))
         else:
             if connection.features.can_introspect_null:
                 assertFieldType('null_bool_field', "models.{}(blank=True, null=True)".format(null_bool_field_type))

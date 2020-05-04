@@ -1,3 +1,4 @@
+from django.db.models import NullBooleanField
 from django.utils.functional import cached_property
 from django.db.backends.base.features import BaseDatabaseFeatures
 
@@ -11,7 +12,6 @@ class DatabaseFeatures(BaseDatabaseFeatures):
     has_select_for_update_nowait = False
     has_select_for_update_skip_locked = False
     has_select_for_update_of = True
-    supports_forward_references = False
     supports_tablespaces = False
     supports_long_model_names = False
     supports_timezones = False
@@ -48,6 +48,13 @@ class DatabaseFeatures(BaseDatabaseFeatures):
     # by returning the type used to store duration field?
     supports_temporal_subtraction = False
 
+    supports_microsecond_precision = False
+
+    can_introspect_null = True
+
+    # Commit every statements, that other transactions see changes.
+    autocommits_when_autocommit_is_off = True
+
     @cached_property
     def supports_transactions(self):
         return True
@@ -65,5 +72,9 @@ class DatabaseFeatures(BaseDatabaseFeatures):
         introspection results; it should provide expectations, not run an introspection
         itself.
         """
-
+        if int(self.connection.ops.firebird_version[3]) >= 3:
+            if isinstance(field, NullBooleanField):
+                return 'BooleanField(blank=True, null=True)'
+            else:
+                return 'BooleanField'
         return 'SmallIntegerField'

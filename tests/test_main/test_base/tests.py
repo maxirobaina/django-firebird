@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 
 from django.conf import settings
 from django.db import connection, DatabaseError
-from django.db.models import F, DateField, DateTimeField, IntegerField, TimeField
+from django.db.models import F, DateField, DateTimeField, IntegerField, TimeField, CASCADE
 from django.db.models.fields.related import ForeignKey
 from django.db.models.functions import (
     Extract, ExtractDay, ExtractHour, ExtractMinute, ExtractMonth,
@@ -13,6 +13,7 @@ from django.db.models.functions import (
     TruncYear,
 )
 from django.test import TestCase, TransactionTestCase, override_settings
+from django.utils import timezone
 
 
 from .models import BigS, FieldsTest, Foo, Bar, DTModel
@@ -97,27 +98,27 @@ class DatabaseOperationsTest(TestCase):
         self.assertEqual(sql, value)
 
     def test_datetime_trunc_sql(self):
-        sql, params = self.ops.datetime_trunc_sql('year', 'DATE_FIELD', None)
+        sql = self.ops.datetime_trunc_sql('year', 'DATE_FIELD', None)
         value = "CAST(EXTRACT(year FROM DATE_FIELD)||'-01-01 00:00:00' AS TIMESTAMP)"
         self.assertEqual(sql, value)
 
-        sql, params = self.ops.datetime_trunc_sql('month', 'DATE_FIELD', None)
+        sql = self.ops.datetime_trunc_sql('month', 'DATE_FIELD', None)
         value = "CAST(EXTRACT(year FROM DATE_FIELD)||'-'||EXTRACT(month FROM DATE_FIELD)||'-01 00:00:00' AS TIMESTAMP)"
         self.assertEqual(sql, value)
 
-        sql, params = self.ops.datetime_trunc_sql('day', 'DATE_FIELD', None)
+        sql = self.ops.datetime_trunc_sql('day', 'DATE_FIELD', None)
         value = "CAST(EXTRACT(year FROM DATE_FIELD)||'-'||EXTRACT(month FROM DATE_FIELD)||'-'||EXTRACT(day FROM DATE_FIELD)||' 00:00:00' AS TIMESTAMP)"
         self.assertEqual(sql, value)
 
-        sql, params = self.ops.datetime_trunc_sql('hour', 'DATE_FIELD', None)
+        sql = self.ops.datetime_trunc_sql('hour', 'DATE_FIELD', None)
         value = "CAST(EXTRACT(year FROM DATE_FIELD)||'-'||EXTRACT(month FROM DATE_FIELD)||'-'||EXTRACT(day FROM DATE_FIELD)||' '||EXTRACT(hour FROM DATE_FIELD)||':00:00' AS TIMESTAMP)"
         self.assertEqual(sql, value)
 
-        sql, params = self.ops.datetime_trunc_sql('minute', 'DATE_FIELD', None)
+        sql = self.ops.datetime_trunc_sql('minute', 'DATE_FIELD', None)
         value = "CAST(EXTRACT(year FROM DATE_FIELD)||'-'||EXTRACT(month FROM DATE_FIELD)||'-'||EXTRACT(day FROM DATE_FIELD)||' '||EXTRACT(hour FROM DATE_FIELD)||':'||EXTRACT(minute FROM DATE_FIELD)||':00' AS TIMESTAMP)"
         self.assertEqual(sql, value)
 
-        sql, params = self.ops.datetime_trunc_sql('second', 'DATE_FIELD', None)
+        sql = self.ops.datetime_trunc_sql('second', 'DATE_FIELD', None)
         value = "CAST(EXTRACT(year FROM DATE_FIELD)||'-'||EXTRACT(month FROM DATE_FIELD)||'-'||EXTRACT(day FROM DATE_FIELD)||' '||EXTRACT(hour FROM DATE_FIELD)||':'||EXTRACT(minute FROM DATE_FIELD)||':'||TRUNC(EXTRACT(second FROM DATE_FIELD)) AS TIMESTAMP)"
         self.assertEqual(sql, value)
 
@@ -144,7 +145,7 @@ class DatabaseSchemaTests(TransactionTestCase):
         self.assertEqual(index_sql, [])
 
     def test_fk_index_creation(self):
-        new_field = ForeignKey(Foo)
+        new_field = ForeignKey(Foo, on_delete=CASCADE)
         new_field.set_attributes_from_name(None)
         with connection.schema_editor() as editor:
             editor.add_field(
