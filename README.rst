@@ -35,7 +35,7 @@ Requirements
   * Django 1.11.x
   * fdb (http://pypi.python.org/pypi/fdb/)
 
-Instalation
+Installation
 -----------
 
 **Using pip**
@@ -50,7 +50,7 @@ Instalation
 
     sudo python setup.py install
 
-**Manual Instalation**
+**Manual Installation**
 
 Instructions for Ubuntu/Debian
 I assume you have installed django from source with python setup.py install
