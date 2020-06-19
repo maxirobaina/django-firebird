@@ -36,7 +36,7 @@ Requirements
   * fdb (http://pypi.python.org/pypi/fdb/)
 
 Installation
------------
+------------
 
 **Using pip**
 
