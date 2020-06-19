@@ -2,12 +2,14 @@ Maximiliano Robaina
 
 
 The django-firebird projects was started by Ivan Illarinov and hosted
-at http://code.google.com/p/django-firebird/ 
+at http://code.google.com/p/django-firebird/
 
 
-Contibutors
+Contributors
 - Marius Popa (mapopa)
 - David Elias (stout.elias)
 - Thomas Steinmaurer (tsteinmaurer)
+- Vasiliy Yashkov <vasiliy.yashkov@red-soft.ru>
+- Artyom Smirnov <artyom.smirnov@red-soft.ru>
 
 And all people who use, test and report issues
