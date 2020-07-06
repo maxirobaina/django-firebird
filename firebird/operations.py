@@ -304,7 +304,10 @@ class DatabaseOperations(BaseDatabaseOperations):
         field = expression.field
 
         val = utils.format_number(value, field.max_digits, field.decimal_places)
-        value = decimal.Decimal.from_float(float(val))
+        
+        if val is not None:
+            value = decimal.Decimal.from_float(float(val))
+            
         return value
 
     def convert_ipfield_value(self, value, expression, connection, context):
