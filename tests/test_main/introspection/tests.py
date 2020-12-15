@@ -9,7 +9,7 @@ from django.test import TransactionTestCase, skipUnlessDBFeature
 from django.test.utils import ignore_warnings
 
 import django
-import mock
+from unittest import mock
 
 if (django.VERSION[0]==2 and django.VERSION[1] < 1) or django.VERSION[0] < 2:
     # if django.version < 2.1
