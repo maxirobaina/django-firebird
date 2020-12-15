@@ -306,7 +306,7 @@ class DatabaseOperations(BaseDatabaseOperations):
         val = utils.format_number(value, field.max_digits, field.decimal_places)
         
         if val is not None:
-            value = decimal.Decimal.from_float(float(val))
+            value = decimal.Decimal(val)
             
         return value
 
