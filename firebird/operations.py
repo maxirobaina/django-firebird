@@ -292,7 +292,10 @@ class DatabaseOperations(BaseDatabaseOperations):
 
     def convert_binaryfield_value(self, value, expression, connection, context):
         if value is not None:
-            value = force_bytes(value)
+            try:
+              value = force_bytes(value.read())
+            except:
+              value = force_bytes(value)
         return value
 
     def convert_booleanfield_value(self, value, expression, connection, context):
