@@ -1,6 +1,6 @@
 import datetime
 import itertools
-import mock
+from unittest import mock
 import unittest
 from copy import copy
 
