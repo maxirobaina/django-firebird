@@ -73,7 +73,7 @@ Modify your setting.py ::
 
     DATABASES = {
         'default': {
-            'ENGINE' : 'firebird',
+            'ENGINE' : 'django.db.backends.firebird',
             'NAME' : '/var/lib/firebird/3.0/data/django_firebird.fdb', # Path to database or db alias
             'USER' : 'SYSDBA',           # Your db user
             'PASSWORD' : '*****',    # db user password
