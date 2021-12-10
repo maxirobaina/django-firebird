@@ -18,7 +18,7 @@ The ``master`` branch is an *in development* version of django-firebird. This ma
 
 This version of django-firebird is working with *fbd* [1], therefore it will work only with firebird 2.x and later.
 The stable version corresponds with django 2.2 and live into ``stable/2.2.x`` branch.
-The current master branch of this repository is being developed under django 3.0.x. For previous Django stable version check
+The current master branch of this repository is being developed under django 3.x. For previous Django stable version check
 the branch list of this repository.
 *fbd* is the official stable python-firebird driver, also it has support for python 3.
 
