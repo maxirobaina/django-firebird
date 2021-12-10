@@ -1,6 +1,5 @@
 import datetime
 
-from django.utils import six
 from django.db.models.expressions import RawSQL, Value
 from django.utils.encoding import force_str
 
