@@ -1,6 +1,11 @@
 Changelog
 =========
 
+v2.2.0
+------
++ Django 2.2 LTS support
+
+
 v1.11.0
 -------
 + Initial adjustments for support django 1.11 #93
