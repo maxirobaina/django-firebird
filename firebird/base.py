@@ -2,8 +2,6 @@
 Firebird database backend for Django.
 """
 
-import sys
-
 try:
     import fdb as Database
 except ImportError as e:
@@ -17,7 +15,6 @@ from django.db.backends.base.base import BaseDatabaseWrapper
 
 from django.utils.encoding import smart_str
 from django.utils.functional import cached_property
-from django.utils import six
 
 from .operations import DatabaseOperations
 from .features import DatabaseFeatures
@@ -253,7 +250,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
                 nullif(trim(trailing from r.rdb$const_name_uq), '') as const_name_uq,
                 nullif(trim(trailing from r.rdb$update_rule), '') as update_rule,
                 nullif(trim(trailing from r.rdb$delete_rule), '') as delete_rule
-            from 
+            from
             rdb$relation_constraints c left join
                 (select * from rdb$check_constraints p
                 where p.rdb$trigger_name = (select first 1 rdb$trigger_name from rdb$check_constraints o
@@ -376,7 +373,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
                 create_string += " " + hm['CONSTRAINT_SOURCE']
             elif hm['CONSTRAINT_TYPE'].casefold() == "FOREIGN KEY".casefold():
                 select_relation = """select coalesce(trim(trailing from rdb$relation_name), '')
-                    from rdb$relation_constraints where rdb$constraint_name = '%s'                    
+                    from rdb$relation_constraints where rdb$constraint_name = '%s'
                 """ % hm['CONST_NAME_UQ']
                 table = ''
                 with self.cursor() as cursor:
@@ -386,7 +383,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
                         continue
                     table = '"' + res[0].strip() + '"'
                 select_django_constraint_segment = """
-                    select django$field_name as field_name from django$constraint_segment s 
+                    select django$field_name as field_name from django$constraint_segment s
                     where s.django$constraint_name = '%s'
                     order by django$position
                 """ % hm['CONSTRAINT_NAME']
@@ -563,14 +560,14 @@ class FirebirdCursorWrapper(object):
             q = self.convert_query(query, len(params))
             return self.cursor.execute(q, params)
         except Database.IntegrityError as e:
-            six.reraise(utils.IntegrityError, utils.IntegrityError(*self.error_info(e, query, params)), sys.exc_info()[2])
+            raise utils.IntegrityError(*self.error_info(e, query, params))
         except Database.DatabaseError as e:
             # Map some error codes to IntegrityError, since they seem to be
             # misclassified and Django would prefer the more logical place.
             # fdb: raise exception as tuple with (error_msg, sqlcode, error_code)
             code = self.get_sql_code(e)
             if code in self.codes_for_integrityerror:
-                six.reraise(utils.IntegrityError, utils.IntegrityError(*self.error_info(e, query, params)), sys.exc_info()[2])
+                raise utils.IntegrityError(*self.error_info(e, query, params))
             raise
 
     def executemany(self, query, param_list):
@@ -578,14 +575,14 @@ class FirebirdCursorWrapper(object):
             q = self.convert_query(query, len(param_list[0]))
             return self.cursor.executemany(q, param_list)
         except Database.IntegrityError as e:
-            six.reraise(utils.IntegrityError, utils.IntegrityError(*self.error_info(e, query, param_list[0])), sys.exc_info()[2])
+            raise utils.IntegrityError(*self.error_info(e, query, param_list[0]))
         except Database.DatabaseError as e:
             # Map some error codes to IntegrityError, since they seem to be
             # misclassified and Django would prefer the more logical place.
             # fdb: raise exception as tuple with (error_msg, sqlcode, error_code)
             code = self.get_sql_code(e)
             if code in self.codes_for_integrityerror:
-                six.reraise(utils.IntegrityError, utils.IntegrityError(*self.error_info(e, query, param_list[0])), sys.exc_info()[2])
+                raise utils.IntegrityError(*self.error_info(e, query, param_list[0]))
             raise
 
     def convert_query(self, query, num_params):

@@ -2,7 +2,6 @@ import logging
 import datetime
 
 from django.db.backends.ddl_references import Statement, Table, IndexName, IndexColumns, TableColumns
-from django.utils import six
 from django.utils.encoding import force_str
 from django.db.models import Index
 from django.db.models.fields import AutoField, CharField
@@ -47,8 +46,8 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         engine_ver = str(self.connection.connection.engine_version).split('.')
         if engine_ver and len(engine_ver) > 0 and int(engine_ver[0]) >= 3:
             sql = """
-                ALTER TABLE \"%(table_name)s\" 
-                ALTER \"%(column)s\" 
+                ALTER TABLE \"%(table_name)s\"
+                ALTER \"%(column)s\"
                 %(null_flag)s NOT NULL
             """
             null_flag = 'DROP' if is_null else 'SET'
@@ -689,7 +688,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
     def quote_value(self, value):
         if isinstance(value, (datetime.date, datetime.time, datetime.datetime)):
             return "'%s'" % value
-        elif isinstance(value, six.string_types):
+        elif isinstance(value, str):
             return repr(value)
         elif isinstance(value, bool):
             return "1" if value else "0"

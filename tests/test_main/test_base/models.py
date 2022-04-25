@@ -1,7 +1,6 @@
 # -*- utf-8 -*-
 
 from django.db import models
-from django.utils.encoding import python_2_unicode_compatible
 
 
 class FieldsTest(models.Model):
@@ -23,7 +22,6 @@ class Bar(models.Model):
     a = models.ForeignKey(Foo, related_name='bars', on_delete=models.CASCADE)
 
 
-@python_2_unicode_compatible
 class DTModel(models.Model):
     name = models.CharField(max_length=32)
     start_datetime = models.DateTimeField(null=True, blank=True)

@@ -3,17 +3,16 @@ import re
 import uuid
 import datetime
 
-import django
+from fdb import charset_map
+
 from django.conf import settings
 from django.db.backends.base.operations import BaseDatabaseOperations
 from django.db.backends import utils
 from django.db.utils import DatabaseError
 from django.utils.functional import cached_property
-from django.utils import six
 from django.utils import timezone
 from django.utils.encoding import force_bytes, force_text
 
-from fdb import charset_map
 from .base import Database
 
 
@@ -105,17 +104,6 @@ class DatabaseOperations(BaseDatabaseOperations):
             return "EXTRACT(WEEKDAY FROM %s) + 1" % field_name
         return "EXTRACT(%s FROM %s)" % (lookup_type.upper(), field_name)
 
-    def date_interval_sql(self, timedelta):
-        """
-        Implements the date interval functionality for expressions.
-        Do nothing here, we'll handle it in the combine_duration_expression method.
-        """
-        ver = django.get_version()
-        if ver < '2.0.0':
-            return timedelta, []
-        else:
-            return timedelta
-
     def date_trunc_sql(self, lookup_type, field_name):
         if lookup_type == 'year':
             sql = "EXTRACT(year FROM %s)||'-01-01'" % field_name
@@ -127,19 +115,11 @@ class DatabaseOperations(BaseDatabaseOperations):
 
     def datetime_cast_date_sql(self, field_name, tzname):
         sql = 'CAST(%s AS DATE)' % field_name
-        ver = django.get_version()
-        if ver < '2.0.0':
-            return sql, []
-        else:
-            return sql
+        return sql
 
     def datetime_cast_time_sql(self, field_name, tzname):
         sql = 'CAST(%s AS TIME)' % field_name
-        ver = django.get_version()
-        if ver < '2.0.0':
-            return sql, []
-        else:
-            return sql
+        return sql
 
     def datetime_extract_sql(self, lookup_type, field_name, tzname):
         """
@@ -151,11 +131,7 @@ class DatabaseOperations(BaseDatabaseOperations):
             sql = "EXTRACT(WEEKDAY FROM %s) + 1" % field_name
         else:
             sql = "EXTRACT(%s FROM %s)" % (lookup_type.upper(), field_name)
-        ver = django.get_version()
-        if ver < '2.0.0':
-            return sql, []
-        else:
-            return sql
+        return sql
 
     def datetime_trunc_sql(self, lookup_type, field_name, tzname):
         """
@@ -182,12 +158,8 @@ class DatabaseOperations(BaseDatabaseOperations):
             sql = "%s||'-'||%s||'-'||%s||' '||%s||':'||%s||':00'" % (year, month, day, hh, mm)
         elif lookup_type == 'second':
             sql = "%s||'-'||%s||'-'||%s||' '||%s||':'||%s||':'||%s" % (year, month, day, hh, mm, ss)
-        ver = django.get_version()
         result = "CAST(%s AS TIMESTAMP)" % sql
-        if ver < '2.0.0':
-            return result, []
-        else:
-            return result
+        return result
 
     def time_trunc_sql(self, lookup_type, field_name):
         """
@@ -307,10 +279,10 @@ class DatabaseOperations(BaseDatabaseOperations):
         field = expression.field
 
         val = utils.format_number(value, field.max_digits, field.decimal_places)
-        
+
         if val is not None:
             value = decimal.Decimal(val)
-            
+
         return value
 
     def convert_ipfield_value(self, value, expression, connection, context):
@@ -365,10 +337,10 @@ class DatabaseOperations(BaseDatabaseOperations):
             else:
                 unit = 'second'
                 value = 0
-        elif isinstance(timedelta, six.integer_types):
+        elif isinstance(timedelta, int):
             unit = 'second'
             value = str((decimal.Decimal(timedelta) * sign) / decimal.Decimal(1000000))
-        elif isinstance(timedelta, six.string_types):
+        elif isinstance(timedelta, str):
             if timedelta.isdigit() or not "timestamp".casefold() in timedelta.casefold():
                 unit = 'millisecond'
                 value = "(%s * %s) / 1000" % (timedelta, sign,)
@@ -377,7 +349,7 @@ class DatabaseOperations(BaseDatabaseOperations):
                 value = "(%s * %s) / 1000" % (sql, sign,)
                 return 'DATEADD(%s %s TO %s)' % (value, unit, timedelta)
             else:
-                return super(DatabaseOperations, self).combine_duration_expression(connector, sub_expressions)
+                return super().combine_duration_expression(connector, sub_expressions)
         else:
             unit = 'second'
             value = timedelta
@@ -571,9 +543,9 @@ class DatabaseOperations(BaseDatabaseOperations):
         # Replaces 6 digits microseconds to 4 digits allowed in Firebird
         if isinstance(value, datetime.datetime):
             value = str(value)
-        if isinstance(value, six.string_types):
+        if isinstance(value, str):
             value = value[:24]
-        return six.text_type(value)
+        return value
 
     def adapt_timefield_value(self, value):
         if value is None:
@@ -586,9 +558,9 @@ class DatabaseOperations(BaseDatabaseOperations):
         # Replaces 6 digits microseconds to 4 digits allowed in Firebird
         if isinstance(value, datetime.time):
             value = str(value)
-        if isinstance(value, six.string_types):
+        if isinstance(value, str):
             value = value[:13]
-        return six.text_type(value)
+        return value
 
 
 def create_object_name(ops, obj, sufix=''):

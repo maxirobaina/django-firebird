@@ -3,6 +3,7 @@
 DEBUG = True
 TEMPLATE_DEBUG = DEBUG
 
+DB_HOST = '192.168.1.60'
 
 DATABASES = {
     'default': {
@@ -10,7 +11,7 @@ DATABASES = {
         'NAME': 'django-test-default',
         'USER': 'SYSDBA',
         'PASSWORD': 'masterkey',
-        'HOST': '127.0.0.1',
+        'HOST': DB_HOST,
         'PORT': '',
         'OPTIONS': {'charset': 'UTF8'},
 
@@ -26,7 +27,7 @@ DATABASES = {
         'NAME': 'fb_other.fdb',
         'USER': 'SYSDBA',
         'PASSWORD': 'masterkey',
-        'HOST': '127.0.0.1',
+        'HOST': DB_HOST,
         'PORT': '',
         'OPTIONS': {'charset': 'UTF8'},
 
