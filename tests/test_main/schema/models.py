@@ -1,6 +1,5 @@
 from django.apps.registry import Apps
 from django.db import models
-from django.utils.encoding import python_2_unicode_compatible
 
 # Because we want to test creation and deletion of these as separate things,
 # these models are all inserted into a separate Apps so the main test
@@ -13,6 +12,21 @@ class Author(models.Model):
     name = models.CharField(max_length=255)
     height = models.PositiveIntegerField(null=True, blank=True)
     weight = models.IntegerField(null=True, blank=True)
+    uuid = models.UUIDField(null=True)
+
+    class Meta:
+        apps = new_apps
+
+
+class AuthorCharFieldWithIndex(models.Model):
+    char_field = models.CharField(max_length=31, db_index=True)
+
+    class Meta:
+        apps = new_apps
+
+
+class AuthorTextFieldWithIndex(models.Model):
+    text_field = models.TextField(db_index=True)
 
     class Meta:
         apps = new_apps
@@ -39,6 +53,31 @@ class AuthorWithIndexedName(models.Model):
 
     class Meta:
         apps = new_apps
+
+
+class AuthorWithUniqueName(models.Model):
+    name = models.CharField(max_length=255, unique=True)
+
+    class Meta:
+        apps = new_apps
+
+
+class AuthorWithIndexedNameAndBirthday(models.Model):
+    name = models.CharField(max_length=255)
+    birthday = models.DateField()
+
+    class Meta:
+        apps = new_apps
+        index_together = [['name', 'birthday']]
+
+
+class AuthorWithUniqueNameAndBirthday(models.Model):
+    name = models.CharField(max_length=255)
+    birthday = models.DateField()
+
+    class Meta:
+        apps = new_apps
+        unique_together = [['name', 'birthday']]
 
 
 class Book(models.Model):
@@ -119,6 +158,7 @@ class IntegerPK(models.Model):
 
 class Note(models.Model):
     info = models.TextField()
+    address = models.TextField(null=True)
 
     class Meta:
         apps = new_apps
@@ -167,11 +207,11 @@ class TagUniqueRename(models.Model):
 
 
 # Based on tests/reserved_names/models.py
-@python_2_unicode_compatible
 class Thing(models.Model):
     when = models.CharField(max_length=1, primary_key=True)
 
     class Meta:
+        apps = new_apps
         db_table = 'drop'
 
     def __str__(self):
