@@ -29,7 +29,7 @@ the branch list of this repository.
 Requirements
 ------------
   * Python 3.x
-  * Django 2.2.x
+  * Django 3.2.x
   * fdb (http://pypi.python.org/pypi/fdb/)
 
 Installation
