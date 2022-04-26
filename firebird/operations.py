@@ -33,9 +33,9 @@ class DatabaseOperations(BaseDatabaseOperations):
 
     def __init__(self, connection, *args, **kwargs):
         try:
-            super(DatabaseOperations, self).__init__(connection)
+            super().__init__(connection)
         except TypeError:
-            super(DatabaseOperations, self).__init__(*args, **kwargs)
+            super().__init__(*args, **kwargs)
 
     @cached_property
     def firebird_version(self):
@@ -102,15 +102,15 @@ class DatabaseOperations(BaseDatabaseOperations):
         # Firebird uses WEEKDAY keyword.
         if lookup_type == 'week_day':
             return "EXTRACT(WEEKDAY FROM %s) + 1" % field_name
-        return "EXTRACT(%s FROM %s)" % (lookup_type.upper(), field_name)
+        return "EXTRACT({} FROM {})".format(lookup_type.upper(), field_name)
 
     def date_trunc_sql(self, lookup_type, field_name):
         if lookup_type == 'year':
             sql = "EXTRACT(year FROM %s)||'-01-01'" % field_name
         elif lookup_type == 'month':
-            sql = "EXTRACT(year FROM %s)||'-'||EXTRACT(month FROM %s)||'-01'" % (field_name, field_name)
+            sql = "EXTRACT(year FROM {})||'-'||EXTRACT(month FROM {})||'-01'".format(field_name, field_name)
         elif lookup_type == 'day':
-            sql = "EXTRACT(year FROM %s)||'-'||EXTRACT(month FROM %s)||'-'||EXTRACT(day FROM %s)" % (field_name, field_name, field_name)
+            sql = "EXTRACT(year FROM {})||'-'||EXTRACT(month FROM {})||'-'||EXTRACT(day FROM {})".format(field_name, field_name, field_name)
         return "CAST(%s AS DATE)" % sql
 
     def datetime_cast_date_sql(self, field_name, tzname):
@@ -130,7 +130,7 @@ class DatabaseOperations(BaseDatabaseOperations):
         if lookup_type == 'week_day':
             sql = "EXTRACT(WEEKDAY FROM %s) + 1" % field_name
         else:
-            sql = "EXTRACT(%s FROM %s)" % (lookup_type.upper(), field_name)
+            sql = "EXTRACT({} FROM {})".format(lookup_type.upper(), field_name)
         return sql
 
     def datetime_trunc_sql(self, lookup_type, field_name, tzname):
@@ -149,15 +149,15 @@ class DatabaseOperations(BaseDatabaseOperations):
         if lookup_type == 'year':
             sql = "%s||'-01-01 00:00:00'" % year
         elif lookup_type == 'month':
-            sql = "%s||'-'||%s||'-01 00:00:00'" % (year, month)
+            sql = "{}||'-'||{}||'-01 00:00:00'".format(year, month)
         elif lookup_type == 'day':
-            sql = "%s||'-'||%s||'-'||%s||' 00:00:00'" % (year, month, day)
+            sql = "{}||'-'||{}||'-'||{}||' 00:00:00'".format(year, month, day)
         elif lookup_type == 'hour':
-            sql = "%s||'-'||%s||'-'||%s||' '||%s||':00:00'" % (year, month, day, hh)
+            sql = "{}||'-'||{}||'-'||{}||' '||{}||':00:00'".format(year, month, day, hh)
         elif lookup_type == 'minute':
-            sql = "%s||'-'||%s||'-'||%s||' '||%s||':'||%s||':00'" % (year, month, day, hh, mm)
+            sql = "{}||'-'||{}||'-'||{}||' '||{}||':'||{}||':00'".format(year, month, day, hh, mm)
         elif lookup_type == 'second':
-            sql = "%s||'-'||%s||'-'||%s||' '||%s||':'||%s||':'||%s" % (year, month, day, hh, mm, ss)
+            sql = "{}||'-'||{}||'-'||{}||' '||{}||':'||{}||':'||{}".format(year, month, day, hh, mm, ss)
         result = "CAST(%s AS TIMESTAMP)" % sql
         return result
 
@@ -177,8 +177,8 @@ class DatabaseOperations(BaseDatabaseOperations):
 
         fields = {
             'hour': "%s || ':00:00'" % hh,
-            'minute': "%s || ':' || %s || ':00'" % (hh, mm,),
-            'second': "%s || ':' || %s || ':' || %s" % (hh, mm, ss,)
+            'minute': "{} || ':' || {} || ':00'".format(hh, mm),
+            'second': "{} || ':' || {} || ':' || {}".format(hh, mm, ss)
         }
 
         return "CAST(%s AS TIME)" % fields[lookup_type]
@@ -231,7 +231,7 @@ class DatabaseOperations(BaseDatabaseOperations):
         Some field types on some backends do not provide data in the correct
         format, this is the hook for converter functions.
         """
-        converters = super(DatabaseOperations, self).get_db_converters(expression)
+        converters = super().get_db_converters(expression)
         internal_type = expression.output_field.get_internal_type()
         if internal_type == 'TextField':
             converters.append(self.convert_textfield_value)
@@ -304,7 +304,7 @@ class DatabaseOperations(BaseDatabaseOperations):
             return 'BIN_AND(%s)' % ','.join(sub_expressions)
         elif connector == '|':
             return 'BIN_OR(%s)' % ','.join(sub_expressions)
-        return super(DatabaseOperations, self).combine_expression(connector, sub_expressions)
+        return super().combine_expression(connector, sub_expressions)
 
     def combine_duration_expression(self, connector, sub_expressions):
         if connector not in ['+', '-']:
@@ -343,18 +343,18 @@ class DatabaseOperations(BaseDatabaseOperations):
         elif isinstance(timedelta, str):
             if timedelta.isdigit() or not "timestamp".casefold() in timedelta.casefold():
                 unit = 'millisecond'
-                value = "(%s * %s) / 1000" % (timedelta, sign,)
+                value = "({} * {}) / 1000".format(timedelta, sign)
             elif not "timestamp".casefold() in sql.casefold() and not timedelta.isdigit():
                 unit = 'millisecond'
-                value = "(%s * %s) / 1000" % (sql, sign,)
-                return 'DATEADD(%s %s TO %s)' % (value, unit, timedelta)
+                value = "({} * {}) / 1000".format(sql, sign)
+                return 'DATEADD({} {} TO {})'.format(value, unit, timedelta)
             else:
                 return super().combine_duration_expression(connector, sub_expressions)
         else:
             unit = 'second'
             value = timedelta
 
-        return 'DATEADD(%s %s TO %s)' % (value, unit, sql)
+        return 'DATEADD({} {} TO {})'.format(value, unit, sql)
 
     def format_for_duration_arithmetic(self, sql):
         """Do nothing here, we will handle it in the custom function."""
@@ -456,17 +456,17 @@ class DatabaseOperations(BaseDatabaseOperations):
         COLTYPE = style.SQL_COLTYPE
         reset_value_sql = 'ALTER SEQUENCE %(sequence_name)s RESTART WITH '
         procedure_sql = '\n'.join([
-            '%s %s' % (KEYWORD('CREATE PROCEDURE'), TABLE('%(procedure_name)s')),
+            '{} {}'.format(KEYWORD('CREATE PROCEDURE'), TABLE('%(procedure_name)s')),
             KEYWORD('AS'),
-            '%s %s %s;' % ( \
+            '{} {} {};'.format( \
                 KEYWORD('DECLARE VARIABLE'), FIELD('start_value'), COLTYPE('INTEGER')),
             KEYWORD('BEGIN'),
-            '   %s gen_id(%s, coalesce(max(%s), 0) - gen_id(%s, 0))' % ( \
+            '   {} gen_id({}, coalesce(max({}), 0) - gen_id({}, 0))'.format( \
                 KEYWORD('SELECT'), FIELD('%(sequence_name)s'),
                 FIELD('%(column_name)s'), FIELD('%(sequence_name)s')),
-            '   %s %s into %s;' % ( \
+            '   {} {} into {};'.format( \
                 KEYWORD('FROM'), TABLE('%(table_name)s'), FIELD(':start_value')),
-            "   %s '%s' || %s || ';';" % ( \
+            "   {} '{}' || {} || ';';".format( \
                 KEYWORD('EXECUTE STATEMENT'), reset_value_sql, FIELD(':start_value')),
             '   %s;' % KEYWORD('suspend'),
             '%s;' % KEYWORD('END')
@@ -490,9 +490,9 @@ class DatabaseOperations(BaseDatabaseOperations):
                     output.append(procedure_sql % locals())
                     procedures.append(procedure_name)
         for procedure in procedures:
-            output.append('%s %s;' % (KEYWORD('EXECUTE PROCEDURE'), TABLE(procedure)))
+            output.append('{} {};'.format(KEYWORD('EXECUTE PROCEDURE'), TABLE(procedure)))
         for procedure in procedures:
-            output.append('%s %s;' % (KEYWORD('DROP PROCEDURE'), TABLE(procedure)))
+            output.append('{} {};'.format(KEYWORD('DROP PROCEDURE'), TABLE(procedure)))
 
         return output
 
@@ -506,7 +506,7 @@ class DatabaseOperations(BaseDatabaseOperations):
             for generator_info in sequences:
                 table_name = generator_info['table']
                 sequence_name = self.get_sequence_name(table_name)
-                query = "%s %s %s 0;" % (
+                query = "{} {} {} 0;".format(
                         style.SQL_KEYWORD('ALTER SEQUENCE'),
                         sequence_name,
                         style.SQL_KEYWORD('RESTART WITH')
@@ -572,16 +572,16 @@ def create_object_name(ops, obj, sufix=''):
 def get_autoinc_sequence_name(ops, table):
     sufix = '_SQ'
     table_name = create_object_name(ops, table, sufix)
-    return ops.quote_name('%s%s' % (table_name, sufix,))
+    return ops.quote_name('{}{}'.format(table_name, sufix))
 
 
 def get_autoinc_trigger_name(ops, table):
     sufix = '_PK'
     table_name = create_object_name(ops, table, sufix)
-    return ops.quote_name('%s%s' % (table_name, sufix,))
+    return ops.quote_name('{}{}'.format(table_name, sufix))
 
 
 def get_reset_procedure_name(ops, table):
     sufix = '_RS'
     table_name = create_object_name(ops, table, sufix)
-    return ops.quote_name('%s%s' % (table_name, sufix,))
+    return ops.quote_name('{}{}'.format(table_name, sufix))

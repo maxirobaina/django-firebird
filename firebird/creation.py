@@ -14,13 +14,13 @@ class DatabaseCreation(BaseDatabaseCreation):
 
     def sql_for_pending_references(self, model, style, pending_references):
         if TEST_MODE < 2:
-            final_output = super(DatabaseCreation, self).sql_for_pending_references(model, style, pending_references)
+            final_output = super().sql_for_pending_references(model, style, pending_references)
             return ['%s ON DELETE CASCADE;' % s[:-1] for s in final_output]
         return []
 
     def sql_remove_table_constraints(self, model, references_to_delete, style):
         if TEST_MODE < 2:
-            return super(DatabaseCreation, self).sql_remove_table_constraints(model, references_to_delete, style)
+            return super().sql_remove_table_constraints(model, references_to_delete, style)
         return []
 
     def _check_active_connection(self, verbosity):

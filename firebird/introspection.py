@@ -96,10 +96,10 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
             from
               rdb$relation_fields rf join rdb$fields f on (rf.rdb$field_source = f.rdb$field_name)
             where
-              upper(rf.rdb$relation_name) = %s
+              upper(rf.rdb$relation_name) = {}
             order by
               rf.rdb$field_position
-            """ % (tbl_name,))
+            """.format(tbl_name))
         items = []
         for r in cursor.fetchall():
             # name type_code display_size internal_size precision scale null_ok + default
@@ -142,7 +142,7 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
             left join rdb$indices i2 on i2.rdb$index_name = rc2.rdb$index_name
             left join rdb$index_segments s2 on i2.rdb$index_name = s2.rdb$index_name
             WHERE RC.RDB$CONSTRAINT_TYPE = 'FOREIGN KEY'
-            and upper(i.rdb$relation_name) = %s """ % (tbl_name,))
+            and upper(i.rdb$relation_name) = {} """.format(tbl_name))
 
         for r in cursor.fetchall():
             key_columns.append((r[0].strip(), r[1].strip(), r[2].strip()))
@@ -210,9 +210,9 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         LEFT JOIN RDB$RELATION_CONSTRAINTS rc2 ON rc2.RDB$CONSTRAINT_NAME = refc.RDB$CONST_NAME_UQ
         LEFT JOIN RDB$INDICES i2 ON i2.RDB$INDEX_NAME = rc2.RDB$INDEX_NAME
         LEFT JOIN RDB$INDEX_SEGMENTS s2 ON i2.RDB$INDEX_NAME = s2.RDB$INDEX_NAME
-        WHERE i.RDB$RELATION_NAME = %s
+        WHERE i.RDB$RELATION_NAME = {}
         ORDER BY s.RDB$FIELD_POSITION
-        """ % (tbl_name,))
+        """.format(tbl_name))
         for constraint_name, constraint_type, column, other_table, other_column, unique, order, expression in cursor.fetchall():
             primary_key = False
             foreign_key = None
@@ -269,10 +269,10 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
             from rdb$index_segments s
             left join rdb$indices i on i.rdb$index_name = s.rdb$index_name
             left join rdb$relation_constraints rc on rc.rdb$index_name = s.rdb$index_name
-            where i.rdb$relation_name = %s
-            and s.rdb$field_name = %s
+            where i.rdb$relation_name = {}
+            and s.rdb$field_name = {}
             and rc.rdb$constraint_type is null
-            order by s.rdb$field_position """ % (table, field,))
+            order by s.rdb$field_position """.format(table, field))
 
         return [index_name[0].strip() for index_name in cursor.fetchall()]
 
@@ -280,4 +280,4 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         """Return a dictionary of {field_name: field_index} for the given table.
            Indexes are 0-based.
         """
-        return dict([(d[0], i) for i, d in enumerate(self.get_table_description(cursor, table_name))])
+        return {d[0]: i for i, d in enumerate(self.get_table_description(cursor, table_name))}

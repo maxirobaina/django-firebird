@@ -123,7 +123,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
     ops_class = DatabaseOperations
 
     def __init__(self, *args, **kwargs):
-        super(DatabaseWrapper, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
 
         self._server_version = None
         self._db_charset = None
@@ -331,11 +331,11 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         constraints = self.get_drop_constraints(select_drop_constraints)
         for hm in constraints:
             sql = """
-                alter table "%(table)s" drop constraint "%(constraint)s"
-            """ % {
-                'table': hm['TABLE_NAME'],
-                'constraint': hm['CONSTR_NAME']
-            }
+                alter table "{table}" drop constraint "{constraint}"
+            """.format(
+                table=hm['TABLE_NAME'],
+                constraint=hm['CONSTR_NAME']
+            )
             editor.execute(sql)
 
     def enable_constraints(self):
@@ -541,7 +541,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         return self._server_version
 
 
-class FirebirdCursorWrapper(object):
+class FirebirdCursorWrapper:
     """
     Django uses "format" style placeholders, but firebird uses "qmark" style.
     This fixes it -- but note that if you want to use a literal "%s" in a query,

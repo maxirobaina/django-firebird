@@ -21,7 +21,7 @@ class SQLCompiler(compiler.SQLCompiler):
         return row[:index_start] + tuple(values)
 
     def as_sql(self, with_limits=True, with_col_aliases=False):
-        sql, params = super(SQLCompiler, self).as_sql(with_limits=False, with_col_aliases=with_col_aliases)
+        sql, params = super().as_sql(with_limits=False, with_col_aliases=with_col_aliases)
 
         if with_limits:
             limits = []
@@ -33,7 +33,7 @@ class SQLCompiler(compiler.SQLCompiler):
                     if val:
                         limits.append('FIRST %d' % val)
                 limits.append('SKIP %d' % self.query.low_mark)
-            sql = 'SELECT %s %s' % (' '.join(limits), sql[6:].strip())
+            sql = 'SELECT {} {}'.format(' '.join(limits), sql[6:].strip())
         return sql, params
 
 

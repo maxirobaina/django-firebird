@@ -13,7 +13,7 @@ class DatabaseClient(BaseDatabaseClient):
             self.executable_name = 'isql'
         else:
             self.executable_name = 'isql-fb'
-        super(DatabaseClient, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
 
     def _get_args(self):
         args = [self.executable_name]

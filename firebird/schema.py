@@ -68,12 +68,12 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         sql = """
             SELECT a.RDB$DEFAULT_VALUE
             FROM RDB$RELATION_FIELDS a
-            WHERE UPPER(a.RDB$FIELD_NAME) = UPPER('%(column)s')
-            AND UPPER(a.RDB$RELATION_NAME) = UPPER('%(table_name)s')
-        """ % {
-            'column': params['column'],
-            'table_name': params['table_name']
-        }
+            WHERE UPPER(a.RDB$FIELD_NAME) = UPPER('{column}')
+            AND UPPER(a.RDB$RELATION_NAME) = UPPER('{table_name}')
+        """.format(
+            column=params['column'],
+            table_name=params['table_name']
+        )
 
         res = None
         with self.connection.cursor() as cursor:
@@ -222,7 +222,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             self.connection.commit()
 
     def _field_should_be_indexed(self, model, field):
-        create_index = super(DatabaseSchemaEditor, self)._field_should_be_indexed(model, field)
+        create_index = super()._field_should_be_indexed(model, field)
 
         # No need to create an index for ForeignKey fields except if
         # db_constraint=False because the index from that constraint won't be
@@ -251,7 +251,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             sql = self._delete_constraint_sql(self.sql_delete_index, model, index_name)
             self.execute(sql)
 
-        super(DatabaseSchemaEditor, self).remove_field(model, field)
+        super().remove_field(model, field)
 
     def _alter_column_type_sql(self, table, old_field, new_field, new_type):
         # The Firebird does not support direct type change to BLOB,
@@ -311,7 +311,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
                 return ((alter_sql, [],), extra_sql,)
         if new_type != self.connection.data_types['TextField'] and new_type != self.connection.data_types[
             'BinaryField']:
-            return super(DatabaseSchemaEditor, self)._alter_column_type_sql(table, old_field, new_field, new_type)
+            return super()._alter_column_type_sql(table, old_field, new_field, new_type)
         else:
             return ((alter_blob_actions), [],)
 
@@ -346,7 +346,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         if old_field.remote_field and old_field.db_constraint:
             fk_names = self._constraint_names(model, [old_field.column], foreign_key=True)
             if strict and len(fk_names) != 1:
-                raise ValueError("Found wrong number (%s) of foreign key constraints for %s.%s" % (
+                raise ValueError("Found wrong number ({}) of foreign key constraints for {}.{}".format(
                     len(fk_names),
                     model._meta.db_table,
                     old_field.column,
@@ -359,7 +359,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             # Find the unique constraint for this field
             constraint_names = self._constraint_names(model, [old_field.column], unique=True)
             if strict and len(constraint_names) != 1:
-                raise ValueError("Found wrong number (%s) of unique constraints for %s.%s" % (
+                raise ValueError("Found wrong number ({}) of unique constraints for {}.{}".format(
                     len(constraint_names),
                     model._meta.db_table,
                     old_field.column,
@@ -411,7 +411,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             if old_db_params['check'] != new_db_params['check'] and old_db_params['check']:
                 constraint_names = self._constraint_names(model, [old_field.column], check=True)
                 if strict and len(constraint_names) != 1:
-                    raise ValueError("Found wrong number (%s) of check constraints for %s.%s" % (
+                    raise ValueError("Found wrong number ({}) of check constraints for {}.{}".format(
                         len(constraint_names),
                         model._meta.db_table,
                         old_field.column,
@@ -577,7 +577,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             # First, drop the old PK
             constraint_names = self._constraint_names(model, primary_key=True)
             if strict and len(constraint_names) != 1:
-                raise ValueError("Found wrong number (%s) of PK constraints for %s" % (
+                raise ValueError("Found wrong number ({}) of PK constraints for {}".format(
                     len(constraint_names),
                     model._meta.db_table,
                 ))
@@ -735,7 +735,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
                 elif self.connection.features.supports_foreign_keys:
                     self.deferred_sql.append(self._create_fk_sql(model, field, "_fk_%(to_table)s_%(to_column)s"))
             # Add the SQL to our big list
-            column_sqls.append("%s %s" % (
+            column_sqls.append("{} {}".format(
                 self.quote_name(field.column),
                 definition,
             ))
@@ -814,7 +814,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             self.execute(statement, params=None)
 
     def delete_model(self, model):
-        super(DatabaseSchemaEditor, self).delete_model(model)
+        super().delete_model(model)
 
         # Also, drop sequence if exists
         table_name = model._meta.db_table
@@ -874,4 +874,4 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
                 except Exception as e:
                     raise e
         else:
-            super(DatabaseSchemaEditor, self).execute(sql, params)
+            super().execute(sql, params)
