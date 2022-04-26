@@ -1,4 +1,4 @@
-from django.db.models import NullBooleanField
+from django.db.models import BooleanField
 from django.utils.functional import cached_property
 from django.db.backends.base.features import BaseDatabaseFeatures
 
