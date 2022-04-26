@@ -7,7 +7,7 @@ class DatabaseFeatures(BaseDatabaseFeatures):
     allows_group_by_pk = False  # if the backend can group by just by PK
     supports_forward_references = False
     has_bulk_insert = False
-    can_return_id_from_insert = True
+    can_return_columns_from_insert = True
     has_select_for_update = True
     has_select_for_update_nowait = False
     has_select_for_update_skip_locked = False
@@ -54,6 +54,20 @@ class DatabaseFeatures(BaseDatabaseFeatures):
 
     # Commit every statements, that other transactions see changes.
     autocommits_when_autocommit_is_off = True
+
+     # Does the backend support JSONField?
+    supports_json_field = True
+    # Can the backend introspect a JSONField?
+    can_introspect_json_field = True
+    # Does the backend support primitives in JSONField?
+    supports_primitives_in_json_field = False
+    # Is there a true datatype for JSON?
+    has_native_json_field = False
+    # Does the backend use PostgreSQL-style JSON operators like '->'?
+    has_json_operators = False
+    # Does the backend support __contains and __contained_by lookups for
+    # a JSONField?
+    supports_json_field_contains = False
 
     @cached_property
     def supports_transactions(self):

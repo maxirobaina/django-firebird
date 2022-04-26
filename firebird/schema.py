@@ -4,7 +4,7 @@ import datetime
 from django.db.backends.ddl_references import Statement, Table, IndexName, IndexColumns, TableColumns
 from django.utils.encoding import force_str
 from django.db.models import Index
-from django.db.models.fields import AutoField, CharField
+from django.db.models.fields import CharField
 from django.db.backends.base.schema import BaseDatabaseSchemaEditor
 from django.db.backends.base.schema import _related_non_m2m_objects, _is_relevant_relation
 
@@ -36,6 +36,8 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
     sql_delete_column = "ALTER TABLE %(table)s DROP %(column)s"
     sql_rename_column = "ALTER TABLE %(table)s ALTER %(old_column)s TO %(new_column)s"
     sql_create_fk = "ALTER TABLE %(table)s ADD CONSTRAINT %(name)s FOREIGN KEY (%(column)s) REFERENCES %(to_table)s (%(to_column)s)"
+    sql_unique_constraint = "UNIQUE (%(columns)s)"
+    sql_create_unique = "ALTER TABLE %(table)s ADD CONSTRAINT %(name)s UNIQUE (%(columns)s)"
 
     # Important!!!
     # If an index is created or a unique on a large VARCHAR field, the expression with hash function is used
@@ -303,14 +305,12 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
                 params = {"table": table, "name": name, "columns": self.quote_name(column)}
                 extra_sql.append((self.sql_create_unique % params, [],))
 
-            if new_type != self.connection.data_types['TextField'] or new_type == self.connection.data_types[
-                'BinaryField']:
+            if new_type != self.connection.data_types['TextField'] or new_type == self.connection.data_types['BinaryField']:
                 # alter column type
                 params = {"column": self.quote_name(new_field.column), "type": new_type}
                 alter_sql = self.sql_alter_column_type % params
                 return ((alter_sql, [],), extra_sql,)
-        if new_type != self.connection.data_types['TextField'] and new_type != self.connection.data_types[
-            'BinaryField']:
+        if new_type != self.connection.data_types['TextField'] and new_type != self.connection.data_types['BinaryField']:
             return super(DatabaseSchemaEditor, self)._alter_column_type_sql(table, old_field, new_field, new_type)
         else:
             return ((alter_blob_actions), [],)
@@ -644,7 +644,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         if self.connection.features.connection_persists_old_columns:
             self.connection.commit()
 
-    def _create_index_sql(self, model, fields, *, name=None, suffix='', using='',
+    def ___create_index_sql(self, model, fields, *, name=None, suffix='', using='',
                           db_tablespace=None, col_suffixes=(), sql=None, opclasses=(),
                           condition=None):
         """
@@ -786,11 +786,11 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
 
         for field_names in model._meta.index_together:
             fields = [model._meta.get_field(field) for field in field_names]
-            create_statement = self._create_index_sql(model, fields, suffix="_idx")
+            create_statement = self._create_index_sql(model, fields=fields, suffix="_idx")
             self.create_index(create_statement)
 
         for index in model._meta.indexes:
-            self.add_index(self, model, index)
+            self.add_index(model, index)
         return output
 
     def _field_indexes_sql(self, model, field):
@@ -799,7 +799,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         """
         output = []
         if self._field_should_be_indexed(model, field):
-            create_statement = self._create_index_sql(model, [field])
+            create_statement = self._create_index_sql(model, fields=[field])
             self.create_index(create_statement)
         return output
 

@@ -247,7 +247,7 @@ class DatabaseOperations(BaseDatabaseOperations):
             converters.append(self.convert_uuidfield_value)
         return converters
 
-    def convert_textfield_value(self, value, expression, connection, context):
+    def convert_textfield_value(self, value, expression, connection):
         if isinstance(value, Database.BlobReader):
             value = value.read()
         if value is not None:
@@ -262,7 +262,7 @@ class DatabaseOperations(BaseDatabaseOperations):
                 value = force_text(value)
         return value
 
-    def convert_binaryfield_value(self, value, expression, connection, context):
+    def convert_binaryfield_value(self, value, expression, connection):
         if value is not None:
             try:
               value = force_bytes(value.read())
@@ -270,12 +270,12 @@ class DatabaseOperations(BaseDatabaseOperations):
               value = force_bytes(value)
         return value
 
-    def convert_booleanfield_value(self, value, expression, connection, context):
+    def convert_booleanfield_value(self, value, expression, connection):
         if value in (0, 1):
             value = bool(value)
         return value
 
-    def convert_decimalfield_value(self, value, expression, connection, context):
+    def convert_decimalfield_value(self, value, expression, connection):
         field = expression.field
 
         val = utils.format_number(value, field.max_digits, field.decimal_places)
@@ -285,12 +285,12 @@ class DatabaseOperations(BaseDatabaseOperations):
 
         return value
 
-    def convert_ipfield_value(self, value, expression, connection, context):
+    def convert_ipfield_value(self, value, expression, connection):
         if value is not None:
             value = value.strip()
         return value
 
-    def convert_uuidfield_value(self, value, expression, connection, context):
+    def convert_uuidfield_value(self, value, expression, connection):
         if value is not None:
             value = uuid.UUID(value)
         return value
@@ -561,6 +561,18 @@ class DatabaseOperations(BaseDatabaseOperations):
         if isinstance(value, str):
             value = value[:13]
         return value
+
+
+    def return_insert_columns(self, fields):
+        if not fields:
+            return '', ()
+        columns = [
+            '%s.%s' % (
+                self.quote_name(field.model._meta.db_table),
+                self.quote_name(field.column),
+            ) for field in fields
+        ]
+        return 'RETURNING %s' % ', '.join(columns), ()
 
 
 def create_object_name(ops, obj, sufix=''):

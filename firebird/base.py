@@ -12,7 +12,7 @@ from fdb.ibase import charset_map
 
 from django.db import utils
 from django.db.backends.base.base import BaseDatabaseWrapper
-
+from django.utils.asyncio import async_unsafe
 from django.utils.encoding import smart_str
 from django.utils.functional import cached_property
 
@@ -32,6 +32,7 @@ OperationalError = Database.OperationalError
 
 class DatabaseWrapper(BaseDatabaseWrapper):
     vendor = 'firebird'
+    display_name = 'FirebirdSQL'
 
     # This dictionary maps Field objects to their associated Firebird column
     # types, as strings. Column-type strings can contain format strings; they'll
@@ -172,6 +173,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
 
         return conn_params
 
+    @async_unsafe
     def get_new_connection(self, conn_params):
         """Opens a connection to the database."""
         return Database.connect(**conn_params)
@@ -184,6 +186,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
             self.data_type_check_constraints['BooleanField'] = '%(qn_column)s IN (False,True)'
             self.data_type_check_constraints['NullBooleanField'] = '(%(qn_column)s IN (False,True)) OR (%(qn_column)s IS NULL)'
 
+    @async_unsafe
     def create_cursor(self, name=None):
         """Creates a cursor. Assumes that a connection is established."""
         cursor = self.connection.cursor()
