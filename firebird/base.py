@@ -64,6 +64,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         'PositiveIntegerField': 'integer',
         'PositiveSmallIntegerField': 'smallint',
         'SlugField': 'varchar(%(max_length)s)',
+        'SmallAutoField': 'smallint',
         'SmallIntegerField': 'smallint',
         'TextField': 'blob sub_type 1',
         'TimeField': 'time',

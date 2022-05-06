@@ -26,10 +26,12 @@ class DatabaseOperations(BaseDatabaseOperations):
         'SmallIntegerField': (Database.SHRT_MIN, Database.SHRT_MAX),
         'IntegerField': (Database.INT_MIN, Database.INT_MAX),
         'BigIntegerField': (Database.LONG_MIN, Database.LONG_MAX),
+        'PositiveBigIntegerField': (0, Database.LONG_MAX),
         'PositiveSmallIntegerField': (0, Database.SHRT_MAX),
         'PositiveIntegerField': (0, Database.INT_MAX),
         'AutoField': (Database.INT_MIN, Database.INT_MAX), # since firebird 3 AutoField
         'BigAutoField': (Database.LONG_MIN, Database.LONG_MAX), # and BigAutoField are supported
+        'SmallAutoField': (Database.SHRT_MIN, Database.SHRT_MAX), # and SmallAutoField are supported
     }
 
     def __init__(self, connection, *args, **kwargs):
@@ -469,7 +471,6 @@ class DatabaseOperations(BaseDatabaseOperations):
                 KEYWORD('FROM'), TABLE('%(table_name)s'), FIELD(':start_value')),
             "   %s '%s' || %s || ';';" % ( \
                 KEYWORD('EXECUTE STATEMENT'), reset_value_sql, FIELD(':start_value')),
-            '   %s;' % KEYWORD('suspend'),
             '%s;' % KEYWORD('END')
         ])
         for model in model_list:
