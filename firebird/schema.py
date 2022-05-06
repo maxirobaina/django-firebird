@@ -37,6 +37,9 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
     sql_rename_column = "ALTER TABLE %(table)s ALTER %(old_column)s TO %(new_column)s"
     sql_create_fk = "ALTER TABLE %(table)s ADD CONSTRAINT %(name)s FOREIGN KEY (%(column)s) REFERENCES %(to_table)s (%(to_column)s)"
 
+    sql_create_index = "CREATE INDEX %(name)s ON %(table)s (%(columns)s)%(include)s%(extra)s"
+    sql_create_unique_index = "CREATE UNIQUE INDEX %(name)s ON %(table)s (%(columns)s)%(include)s"
+
     # Important!!!
     # If an index is created or a unique on a large VARCHAR field, the expression with hash function is used
     sql_create_hash_index = "CREATE INDEX %(name)s ON %(table)s computed by(hash(%(columns)s))"
@@ -300,7 +303,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             unq_names = self._constraint_names(old_field.model, [old_field.column], unique=True)
             for name in unq_names:
                 self.execute(self._delete_constraint_sql(self.sql_delete_unique, model, name))
-                params = {"table": table, "name": name, "columns": self.quote_name(column)}
+                params = {"table": table, "name": name, "columns": self.quote_name(column), "deferrable": ''}
                 extra_sql.append((self.sql_create_unique % params, [],))
 
             if new_type != self.connection.data_types['TextField'] or new_type == self.connection.data_types[
@@ -646,7 +649,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
 
     def _create_index_sql(self, model, fields, *, name=None, suffix='', using='',
                           db_tablespace=None, col_suffixes=(), sql=None, opclasses=(),
-                          condition=None):
+                          condition=None, include=None, expressions=None):
         """
         Return the SQL statement to create the index for one or several fields.
         `sql` can be specified if the syntax differs from the standard (GIS
@@ -671,6 +674,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             columns=self._index_columns(table, columns, col_suffixes, opclasses),
             extra=tablespace_sql,
             condition=(' WHERE ' + condition) if condition else '',
+            include=self._index_include_sql(model, include),
         )
 
     def _index_columns(self, table, columns, col_suffixes, opclasses):
@@ -790,7 +794,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             self.create_index(create_statement)
 
         for index in model._meta.indexes:
-            self.add_index(self, model, index)
+            self.add_index(model, index)
         return output
 
     def _field_indexes_sql(self, model, field):
