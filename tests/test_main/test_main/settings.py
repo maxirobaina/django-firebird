@@ -3,7 +3,7 @@
 DEBUG = True
 TEMPLATE_DEBUG = DEBUG
 
-DB_HOST = '192.168.1.60'
+DB_HOST = '127.0.0.1'
 
 DATABASES = {
     'default': {
@@ -40,6 +40,8 @@ DATABASES = {
     }
 
 }
+
+DEFAULT_AUTO_FIELD = 'django.db.models.AutoField'
 
 # Local time zone for this installation. Choices can be found here:
 # http://en.wikipedia.org/wiki/List_of_tz_zones_by_name
