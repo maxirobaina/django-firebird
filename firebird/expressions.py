@@ -1,5 +1,4 @@
 import datetime
-import six
 
 from django.db.models.expressions import RawSQL, Value
 from django.utils.encoding import force_str
@@ -8,7 +7,7 @@ from django.utils.encoding import force_str
 def quote_value(value):
     if isinstance(value, (datetime.date, datetime.time, datetime.datetime)):
         return "'%s'" % value
-    elif isinstance(value, six.string_types):
+    elif isinstance(value, str):
         return "'%s'" % value
     elif isinstance(value, bool):
         return "1" if value else "0"

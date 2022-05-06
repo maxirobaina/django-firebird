@@ -5,9 +5,6 @@ django-firebird
 .. image:: https://img.shields.io/pypi/v/django-firebird.svg
     :target: https://pypi.python.org/pypi/django-firebird
 
-.. image:: https://caniusepython3.com/project/django-firebird.svg
-    :target: https://caniusepython3.com/project/django-firebird
-
 
 Firebird SQL backend for django
 -------------------------------
@@ -20,8 +17,8 @@ The ``master`` branch is an *in development* version of django-firebird. This ma
 
 
 This version of django-firebird is working with *fbd* [1], therefore it will work only with firebird 2.x and later.
-The stable version corresponds with django 1.11 and live into ``stable/1.11.x`` branch.
-The current master branch of this repository is being developed under django 2.0.x. For previous Django stable version check
+The stable version corresponds with django 2.2 and live into ``stable/2.2.x`` branch.
+The current master branch of this repository is being developed under django 3.x. For previous Django stable version check
 the branch list of this repository.
 *fbd* is the official stable python-firebird driver, also it has support for python 3.
 
@@ -31,12 +28,12 @@ the branch list of this repository.
 
 Requirements
 ------------
-  * Python 2.7+ or Python 3.x
-  * Django 1.11.x
+  * Python 3.x
+  * Django 2.2.x
   * fdb (http://pypi.python.org/pypi/fdb/)
 
-Instalation
------------
+Installation
+------------
 
 **Using pip**
 
@@ -50,21 +47,21 @@ Instalation
 
     sudo python setup.py install
 
-**Manual Instalation**
+**Manual Installation**
 
 Instructions for Ubuntu/Debian
 I assume you have installed django from source with python setup.py install
 
 
-    cd /usr/local/lib/python2.7/dist-packages
+    cd /usr/local/lib/python3.8/dist-packages
 
     sudo git clone git://github.com/maxirobaina/django-firebird.git
 
     sudo ln -s django-firebird/firebird firebird
 
-    cd /usr/local/lib/python2.7/dist-packages/django/db/backends
+    cd /usr/local/lib/python3.8/dist-packages/django/db/backends
 
-    sudo ln -s /usr/local/lib/python2.7/dist-packages/django-firebird/firebird
+    sudo ln -s /usr/local/lib/python3.8/dist-packages/django-firebird/firebird
 
 Configuration
 -------------
@@ -73,8 +70,8 @@ Modify your setting.py ::
 
     DATABASES = {
         'default': {
-            'ENGINE' : 'firebird',
-            'NAME' : '/var/lib/firebird/2.5/data/django_firebird.fdb', # Path to database or db alias
+            'ENGINE' : 'django.db.backends.firebird',
+            'NAME' : '/var/lib/firebird/3.0/data/django_firebird.fdb', # Path to database or db alias
             'USER' : 'SYSDBA',           # Your db user
             'PASSWORD' : '*****',    # db user password
             'HOST' : '127.0.0.1',        # Your host machine

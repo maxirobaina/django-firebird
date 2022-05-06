@@ -1,19 +1,13 @@
-import django
 import datetime
-import warnings
-import six
 
 from django.utils.encoding import force_str
 from django.db.models.indexes import Index
 from django.db.backends.base.introspection import (
-    BaseDatabaseIntrospection, FieldInfo, TableInfo,
+    BaseDatabaseIntrospection,
+    FieldInfo,
+    TableInfo,
 )
 
-if (django.VERSION[0]==2 and django.VERSION[1] < 1) or django.VERSION[0] < 2:
-    # if django.version < 2.1
-    from django.utils.deprecation import RemovedInDjango21Warning
-else:
-    RemovedInDjango21Warning = None
 
 class DatabaseIntrospection(BaseDatabaseIntrospection):
     # Maps type codes to Django Field types.
@@ -25,6 +19,7 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         13: 'TimeField',
         14: 'CharField',
         16: 'BigIntegerField',
+        23: 'BooleanField', # since firebird 3 boolean fields are supported
         27: 'FloatField',
         35: 'DateTimeField',
         37: 'CharField',
@@ -46,7 +41,7 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
     def quote_value(self, value):
         if isinstance(value, (datetime.date, datetime.time, datetime.datetime)):
             return "'%s'" % value
-        elif isinstance(value, six.string_types):
+        elif isinstance(value, str):
             return repr(value)
         elif isinstance(value, bool):
             return "1" if value else "0"
@@ -112,6 +107,18 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         return items
 
     def get_sequences(self, cursor, table_name, table_fields=()):
+        """
+        Return sequences for table.
+
+        Args:
+            cursor (Cursor): Database cursor
+            table_name (str): table
+            table_fields (list): table fields
+
+        .. important::
+
+           Firebird does not support introspected sequences for table.
+        """
         pk_col = self.get_primary_key_column(cursor, table_name)
         return [{'table': table_name, 'column': pk_col}]
 
@@ -152,51 +159,6 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
             relations[my_fieldname] = (other_field, other_table)
         return relations
 
-    if RemovedInDjango21Warning:
-        def get_indexes(self, cursor, table_name):
-            """
-            Returns a dictionary of fieldname -> infodict for the given table,
-            where each infodict is in the format:
-                {'primary_key': boolean representing whether it's the primary key,
-                 'unique': boolean representing whether it's a unique index/constraint}
-            """
-
-            warnings.warn(
-                "get_indexes() is deprecated in favor of get_constraints().",
-                RemovedInDjango21Warning, stacklevel=2
-            )
-
-            # This query retrieves each field name and index type on the given table.
-            tbl_name = "'%s'" % table_name.upper()
-            cursor.execute("""
-            SELECT
-              LOWER(s.RDB$FIELD_NAME) AS field_name,
-    
-              LOWER(case
-                when rc.RDB$CONSTRAINT_TYPE is not null then rc.RDB$CONSTRAINT_TYPE
-                else 'INDEX'
-              end) AS constraint_type
-    
-            FROM RDB$INDEX_SEGMENTS s
-            LEFT JOIN RDB$INDICES i ON i.RDB$INDEX_NAME = s.RDB$INDEX_NAME
-            LEFT JOIN RDB$RELATION_CONSTRAINTS rc ON rc.RDB$INDEX_NAME = s.RDB$INDEX_NAME
-            WHERE i.RDB$RELATION_NAME = %s
-            AND i.RDB$SEGMENT_COUNT = 1
-            ORDER BY s.RDB$FIELD_POSITION
-            """ % (tbl_name,))
-            indexes = {}
-            for fn, ct in cursor.fetchall():
-                field_name = fn.strip()
-                constraint_type = ct.strip()
-                if field_name not in indexes:
-                    indexes[field_name] = {'primary_key': False, 'unique': False}
-                # It's possible to have the unique and PK constraints in separate indexes.
-                if constraint_type == 'primary key':
-                    indexes[field_name]['primary_key'] = True
-                if constraint_type == 'unique':
-                    indexes[field_name]['unique'] = True
-            return indexes
-
     def get_constraints(self, cursor, table_name):
         """
         Retrieves any constraints or keys (unique, pk, fk, check, index)
@@ -231,13 +193,18 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
             else 'INDEX'
           end AS constraint_type,
 
-          s.RDB$FIELD_NAME AS field_name,
+          case
+            when s.RDB$FIELD_NAME is not null then s.RDB$FIELD_NAME
+            else ''
+          end AS field_name,
+
           i2.RDB$RELATION_NAME AS references_table,
           s2.RDB$FIELD_NAME AS references_field,
           i.RDB$UNIQUE_FLAG,
-          i.RDB$INDEX_TYPE
+          i.RDB$INDEX_TYPE,
+          i.RDB$EXPRESSION_SOURCE as expression_source
         FROM RDB$INDEX_SEGMENTS s
-        LEFT JOIN RDB$INDICES i ON i.RDB$INDEX_NAME = s.RDB$INDEX_NAME
+        FULL JOIN RDB$INDICES i ON i.RDB$INDEX_NAME = s.RDB$INDEX_NAME
         LEFT JOIN RDB$RELATION_CONSTRAINTS rc ON rc.RDB$INDEX_NAME = s.RDB$INDEX_NAME
         LEFT JOIN RDB$REF_CONSTRAINTS refc ON rc.RDB$CONSTRAINT_NAME = refc.RDB$CONSTRAINT_NAME
         LEFT JOIN RDB$RELATION_CONSTRAINTS rc2 ON rc2.RDB$CONSTRAINT_NAME = refc.RDB$CONST_NAME_UQ
@@ -246,11 +213,12 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         WHERE i.RDB$RELATION_NAME = %s
         ORDER BY s.RDB$FIELD_POSITION
         """ % (tbl_name,))
-        for constraint_name, constraint_type, column, other_table, other_column, unique, order in cursor.fetchall():
+        for constraint_name, constraint_type, column, other_table, other_column, unique, order, expression in cursor.fetchall():
             primary_key = False
             foreign_key = None
             check = False
             index = False
+            expression_source = None
             order = 'DESC' if order else 'ASC'
             constraint = constraint_name.strip()
             constraint_type = constraint_type.strip()
@@ -259,6 +227,8 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
                 other_table = other_table.strip().lower()
             if other_column:
                 other_column = other_column.strip().lower()
+            if expression:
+                expression_source = expression.strip().lower()
 
             if constraint_type == 'PRIMARY KEY':
                 primary_key = True
@@ -279,7 +249,8 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
                     "foreign_key": foreign_key,
                     "check": check,
                     "index": index,
-                    "type": Index.suffix
+                    "type": Index.suffix,
+                    "expression_source": expression_source
                 }
             # Record the details
             constraints[constraint]['columns'].append(column)

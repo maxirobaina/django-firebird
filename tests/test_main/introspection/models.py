@@ -1,28 +1,21 @@
-from __future__ import unicode_literals
-
 from django.db import models
-from six import python_2_unicode_compatible
 
 
-@python_2_unicode_compatible
 class City(models.Model):
     id = models.BigAutoField(primary_key=True)
     name = models.CharField(max_length=50)
 
-    def __str__(self):
-        return self.name
+
+class Country(models.Model):
+    id = models.SmallAutoField(primary_key=True)
+    name = models.CharField(max_length=50)
 
 
-@python_2_unicode_compatible
 class District(models.Model):
     city = models.OneToOneField(City, models.CASCADE, primary_key=True)
     name = models.CharField(max_length=50)
 
-    def __str__(self):
-        return self.name
 
-
-@python_2_unicode_compatible
 class Reporter(models.Model):
     first_name = models.CharField(max_length=30)
     last_name = models.CharField(max_length=30)
@@ -30,15 +23,12 @@ class Reporter(models.Model):
     facebook_user_id = models.BigIntegerField(null=True)
     raw_data = models.BinaryField(null=True)
     small_int = models.SmallIntegerField()
+    interval = models.DurationField()
 
     class Meta:
         unique_together = ('first_name', 'last_name')
 
-    def __str__(self):
-        return "%s %s" % (self.first_name, self.last_name)
 
-
-@python_2_unicode_compatible
 class Article(models.Model):
     headline = models.CharField(max_length=100)
     pub_date = models.DateField()
@@ -46,9 +36,6 @@ class Article(models.Model):
     reporter = models.ForeignKey(Reporter, models.CASCADE)
     response_to = models.ForeignKey('self', models.SET_NULL, null=True)
     unmanaged_reporters = models.ManyToManyField(Reporter, through='ArticleReporter', related_name='+')
-
-    def __str__(self):
-        return self.headline
 
     class Meta:
         ordering = ('headline',)
@@ -64,3 +51,47 @@ class ArticleReporter(models.Model):
 
     class Meta:
         managed = False
+
+
+class Comment(models.Model):
+    ref = models.UUIDField(unique=True)
+    article = models.ForeignKey(Article, models.CASCADE, db_index=True)
+    email = models.EmailField()
+    pub_date = models.DateTimeField()
+    body = models.TextField()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['article', 'email', 'pub_date'], name='article_email_pub_date_uniq'),
+        ]
+        indexes = [
+            models.Index(fields=['email', 'pub_date'], name='email_pub_date_idx'),
+        ]
+
+
+class CheckConstraintModel(models.Model):
+    up_votes = models.PositiveIntegerField()
+    voting_number = models.PositiveIntegerField(unique=True)
+
+    class Meta:
+        required_db_features = {
+            'supports_table_check_constraints',
+        }
+        constraints = [
+            models.CheckConstraint(name='up_votes_gte_0_check', check=models.Q(up_votes__gte=0)),
+        ]
+
+
+class UniqueConstraintConditionModel(models.Model):
+    name = models.CharField(max_length=255)
+    color = models.CharField(max_length=32, null=True)
+
+    class Meta:
+        required_db_features = {'supports_partial_indexes'}
+        constraints = [
+            models.UniqueConstraint(
+                fields=['name'],
+                name='cond_name_without_color_uniq',
+                condition=models.Q(color__isnull=True),
+            ),
+        ]

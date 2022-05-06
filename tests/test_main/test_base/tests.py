@@ -15,6 +15,7 @@ from django.db.models.functions import (
 from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 
+
 from .models import BigS, FieldsTest, Foo, Bar, DTModel
 
 

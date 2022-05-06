@@ -1,3 +1,4 @@
+from django.db.models import NullBooleanField
 from django.utils.functional import cached_property
 from django.db.backends.base.features import BaseDatabaseFeatures
 
@@ -71,5 +72,9 @@ class DatabaseFeatures(BaseDatabaseFeatures):
         introspection results; it should provide expectations, not run an introspection
         itself.
         """
-
+        if int(self.connection.ops.firebird_version[3]) >= 3:
+            if isinstance(field, NullBooleanField):
+                return 'BooleanField(blank=True, null=True)'
+            else:
+                return 'BooleanField'
         return 'SmallIntegerField'
