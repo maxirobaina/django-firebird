@@ -7,7 +7,7 @@ class DatabaseFeatures(BaseDatabaseFeatures):
     allows_group_by_pk = False  # if the backend can group by just by PK
     supports_forward_references = False
     has_bulk_insert = False
-    can_return_id_from_insert = True
+    can_return_columns_from_insert = True
     has_select_for_update = True
     has_select_for_update_nowait = False
     has_select_for_update_skip_locked = False
@@ -22,6 +22,7 @@ class DatabaseFeatures(BaseDatabaseFeatures):
     can_rollback_ddl = True
     requires_literal_defaults = True
     has_case_insensitive_like = False
+    supports_index_column_ordering = False
 
     # Is there a true datatype for uuid?
     has_native_uuid_field = False
@@ -51,6 +52,13 @@ class DatabaseFeatures(BaseDatabaseFeatures):
     supports_microsecond_precision = False
 
     can_introspect_null = True
+
+    supports_partial_indexes = False
+    supports_expression_indexes = False
+
+    allows_multiple_constraints_on_same_fields = False
+
+    supports_json_field = False
 
     # Commit every statements, that other transactions see changes.
     autocommits_when_autocommit_is_off = True

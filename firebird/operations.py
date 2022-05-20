@@ -3,8 +3,6 @@ import re
 import uuid
 import datetime
 
-from fdb import charset_map
-
 from django.conf import settings
 from django.db.backends.base.operations import BaseDatabaseOperations
 from django.db.backends import utils
@@ -12,7 +10,7 @@ from django.db.utils import DatabaseError
 from django.utils.functional import cached_property
 from django.utils import timezone
 from django.utils.encoding import force_bytes, force_text
-from fdb.ibase import charset_map
+from firebird.driver import CHARSET_MAP
 
 from .base import Database
 
@@ -23,15 +21,15 @@ class DatabaseOperations(BaseDatabaseOperations):
     # Integer field safe ranges by `internal_type` as documented
     # in docs/ref/models/fields.txt.
     integer_field_ranges = {
-        'SmallIntegerField': (Database.SHRT_MIN, Database.SHRT_MAX),
-        'IntegerField': (Database.INT_MIN, Database.INT_MAX),
-        'BigIntegerField': (Database.LONG_MIN, Database.LONG_MAX),
-        'PositiveBigIntegerField': (0, Database.LONG_MAX),
-        'PositiveSmallIntegerField': (0, Database.SHRT_MAX),
-        'PositiveIntegerField': (0, Database.INT_MAX),
-        'AutoField': (Database.INT_MIN, Database.INT_MAX), # since firebird 3 AutoField
-        'BigAutoField': (Database.LONG_MIN, Database.LONG_MAX), # and BigAutoField are supported
-        'SmallAutoField': (Database.SHRT_MIN, Database.SHRT_MAX), # and SmallAutoField are supported
+        'SmallIntegerField': (Database.core.SHRT_MIN, Database.core.SHRT_MAX),
+        'IntegerField': (Database.core.INT_MIN, Database.core.INT_MAX),
+        'BigIntegerField': (Database.core.LONG_MIN, Database.core.LONG_MAX),
+        'PositiveBigIntegerField': (0, Database.core.LONG_MAX),
+        'PositiveSmallIntegerField': (0, Database.core.SHRT_MAX),
+        'PositiveIntegerField': (0, Database.core.INT_MAX),
+        'AutoField': (Database.core.INT_MIN, Database.core.INT_MAX), # since firebird 3 AutoField
+        'BigAutoField': (Database.core.LONG_MIN, Database.core.LONG_MAX), # and BigAutoField are supported
+        'SmallAutoField': (Database.core.SHRT_MIN, Database.core.SHRT_MAX), # and SmallAutoField are supported
     }
 
     def __init__(self, connection, *args, **kwargs):
@@ -107,24 +105,43 @@ class DatabaseOperations(BaseDatabaseOperations):
             return "EXTRACT(WEEKDAY FROM %s) + 1" % field_name
         return "EXTRACT(%s FROM %s)" % (lookup_type.upper(), field_name)
 
-    def date_trunc_sql(self, lookup_type, field_name):
+    def _convert_field_to_tz(self, field_name, tzname):
+        if not (self.connection.features.supports_timezones and settings.USE_TZ and tzname):
+            return field_name
+        field_name = "%s AT TIME ZONE '%s'" % (field_name, self._prepare_tzname_delta(tzname))
+        return field_name
+
+    def _prepare_tzname_delta(self, tzname):
+        if '+' in tzname:
+            return tzname.replace('+', '-')
+        elif '-' in tzname:
+            return tzname.replace('-', '+')
+        return tzname
+
+    def date_trunc_sql(self, lookup_type, field_name, tzname=None):
+        field_name = self._convert_field_to_tz(field_name, tzname)
         if lookup_type == 'year':
             sql = "EXTRACT(year FROM %s)||'-01-01'" % field_name
         elif lookup_type == 'month':
             sql = "EXTRACT(year FROM %s)||'-'||EXTRACT(month FROM %s)||'-01'" % (field_name, field_name)
+        elif lookup_type == 'week':
+            sql = "EXTRACT(year FROM %s)||'-'||EXTRACT(month FROM %s)||'-'||EXTRACT(day FROM DATEADD(1-EXTRACT(WEEKDAY FROM %s) DAY TO %s))" % (field_name, field_name, field_name, field_name)
         elif lookup_type == 'day':
             sql = "EXTRACT(year FROM %s)||'-'||EXTRACT(month FROM %s)||'-'||EXTRACT(day FROM %s)" % (field_name, field_name, field_name)
         return "CAST(%s AS DATE)" % sql
 
     def datetime_cast_date_sql(self, field_name, tzname):
+        field_name = self._convert_field_to_tz(field_name, tzname)
         sql = 'CAST(%s AS DATE)' % field_name
         return sql
 
     def datetime_cast_time_sql(self, field_name, tzname):
+        field_name = self._convert_field_to_tz(field_name, tzname)
         sql = 'CAST(%s AS TIME)' % field_name
         return sql
 
     def datetime_extract_sql(self, lookup_type, field_name, tzname):
+        field_name = self._convert_field_to_tz(field_name, tzname)
         """
         Given a lookup_type of 'year', 'month', 'day', 'hour', 'minute' or
         'second', returns the SQL that extracts a value from the given
@@ -137,6 +154,7 @@ class DatabaseOperations(BaseDatabaseOperations):
         return sql
 
     def datetime_trunc_sql(self, lookup_type, field_name, tzname):
+        field_name = self._convert_field_to_tz(field_name, tzname)
         """
         Given a lookup_type of 'year', 'month', 'day', 'hour', 'minute' or
         'second', returns the SQL that truncates the given datetime field
@@ -145,6 +163,7 @@ class DatabaseOperations(BaseDatabaseOperations):
         """
         year = "EXTRACT(year FROM %s)" % field_name
         month = "EXTRACT(month FROM %s)" % field_name
+        week = "EXTRACT(day FROM DATEADD(-(EXTRACT(WEEKDAY FROM %s))+1 DAY TO %s))" % (field_name, field_name)
         day = "EXTRACT(day FROM %s)" % field_name
         hh = "EXTRACT(hour FROM %s)" % field_name
         mm = "EXTRACT(minute FROM %s)" % field_name
@@ -153,6 +172,8 @@ class DatabaseOperations(BaseDatabaseOperations):
             sql = "%s||'-01-01 00:00:00'" % year
         elif lookup_type == 'month':
             sql = "%s||'-'||%s||'-01 00:00:00'" % (year, month)
+        elif lookup_type == 'week':
+            sql = "%s||'-'||%s||'-'||%s||' 00:00:00'" % (year, month, week)
         elif lookup_type == 'day':
             sql = "%s||'-'||%s||'-'||%s||' 00:00:00'" % (year, month, day)
         elif lookup_type == 'hour':
@@ -161,10 +182,11 @@ class DatabaseOperations(BaseDatabaseOperations):
             sql = "%s||'-'||%s||'-'||%s||' '||%s||':'||%s||':00'" % (year, month, day, hh, mm)
         elif lookup_type == 'second':
             sql = "%s||'-'||%s||'-'||%s||' '||%s||':'||%s||':'||%s" % (year, month, day, hh, mm, ss)
+
         result = "CAST(%s AS TIMESTAMP)" % sql
         return result
 
-    def time_trunc_sql(self, lookup_type, field_name):
+    def time_trunc_sql(self, lookup_type, field_name, tzname=None):
         """
         Given a lookup_type of 'hour', 'minute' or 'second', returns the SQL
         that truncates the given time field field_name to a time object with
@@ -174,6 +196,8 @@ class DatabaseOperations(BaseDatabaseOperations):
         includes millisecond as fraction, so we need to TRUNC for just
         get the seconds part.
         """
+        field_name = self._convert_field_to_tz(field_name, tzname)
+
         hh = "EXTRACT(hour FROM %s)" % field_name
         mm = "EXTRACT(minute FROM %s)" % field_name
         ss = "TRUNC(EXTRACT(second FROM %s))" % field_name
@@ -251,14 +275,14 @@ class DatabaseOperations(BaseDatabaseOperations):
         return converters
 
     def convert_textfield_value(self, value, expression, connection):
-        if isinstance(value, Database.BlobReader):
+        if isinstance(value, Database.core.BlobReader):
             value = value.read()
         if value is not None:
             db_charset = None
             # Trying to get character set from connection parameters to convert a string value
             if 'charset' in connection.get_connection_params():
-                if connection.get_connection_params()['charset'] in charset_map:
-                    db_charset = charset_map[connection.get_connection_params()['charset']]
+                if connection.get_connection_params()['charset'] in CHARSET_MAP:
+                    db_charset = CHARSET_MAP[connection.get_connection_params()['charset']]
             if db_charset:
                 value = force_text(value, encoding=db_charset, errors='replace')
             else:
@@ -307,6 +331,12 @@ class DatabaseOperations(BaseDatabaseOperations):
             return 'BIN_AND(%s)' % ','.join(sub_expressions)
         elif connector == '|':
             return 'BIN_OR(%s)' % ','.join(sub_expressions)
+        elif connector == '<<':
+            return 'BIN_SHL(%s)' % ','.join(sub_expressions)
+        elif connector == '>>':
+            return 'BIN_SHR(%s)' % ','.join(sub_expressions)
+        elif connector == '#':
+            return 'BIN_XOR(%s)' % ','.join(sub_expressions)
         return super(DatabaseOperations, self).combine_expression(connector, sub_expressions)
 
     def combine_duration_expression(self, connector, sub_expressions):
@@ -346,10 +376,10 @@ class DatabaseOperations(BaseDatabaseOperations):
         elif isinstance(timedelta, str):
             if timedelta.isdigit() or not "timestamp".casefold() in timedelta.casefold():
                 unit = 'millisecond'
-                value = "(%s * %s) / 1000" % (timedelta, sign,)
+                value = "(cast (%s as bigint) * %s) / 1000" % (timedelta, sign,)
             elif not "timestamp".casefold() in sql.casefold() and not timedelta.isdigit():
                 unit = 'millisecond'
-                value = "(%s * %s) / 1000" % (sql, sign,)
+                value = "(cast (%s as bigint) * %s) / 1000" % (sql, sign,)
                 return 'DATEADD(%s %s TO %s)' % (value, unit, timedelta)
             else:
                 return super().combine_duration_expression(connector, sub_expressions)
@@ -498,25 +528,25 @@ class DatabaseOperations(BaseDatabaseOperations):
 
         return output
 
-    def sql_flush(self, style, tables, sequences, allow_cascade=False):
-        if tables:
-            sql = ['%s %s %s;' %
-                    (style.SQL_KEYWORD('DELETE'),
-                     style.SQL_KEYWORD('FROM'),
-                     style.SQL_TABLE(self.quote_name(table))
-                     ) for table in tables]
-            for generator_info in sequences:
-                table_name = generator_info['table']
-                sequence_name = self.get_sequence_name(table_name)
+    def sql_flush(self, style, tables, *, reset_sequences=False, allow_cascade=False):
+        if not tables:
+            return []
+
+        sql = ['%s %s %s;' %
+               (style.SQL_KEYWORD('DELETE'),
+                style.SQL_KEYWORD('FROM'),
+                style.SQL_TABLE(self.quote_name(table))
+                ) for table in tables]
+        if reset_sequences:
+            for table in tables:
+                sequence_name = self.get_sequence_name(table)
                 query = "%s %s %s 0;" % (
-                        style.SQL_KEYWORD('ALTER SEQUENCE'),
-                        sequence_name,
-                        style.SQL_KEYWORD('RESTART WITH')
+                    style.SQL_KEYWORD('ALTER SEQUENCE'),
+                    sequence_name,
+                    style.SQL_KEYWORD('RESTART WITH')
                 )
                 sql.append(query)
-            return sql
-        else:
-            return []
+        return sql
 
     def drop_sequence_sql(self, table):
         return 'DROP SEQUENCE %s' % self.get_sequence_name(table)
@@ -538,7 +568,7 @@ class DatabaseOperations(BaseDatabaseOperations):
         # Firebird doesn't support tz-aware datetimes
         if timezone.is_aware(value):
             if settings.USE_TZ:
-                value = value.astimezone(timezone.utc).replace(tzinfo=None)
+                value = timezone.make_naive(value, self.connection.timezone)
             else:
                 raise ValueError("Firebird backend does not support timezone-aware datetimes when USE_TZ is False.")
 

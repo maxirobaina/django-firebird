@@ -93,6 +93,14 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
               , f.rdb$field_scale * -1
               , rf.rdb$null_flag
               , rf.rdb$default_source
+              , 
+              case
+                  when (rf.rdb$collation_id is NULL) then
+                    'NONE'
+                  else
+                    (select c.rdb$collation_name from rdb$collations c where c.rdb$collation_id = f.rdb$collation_id 
+                        and c.rdb$character_set_id = f.rdb$character_set_id)
+                  end as coll_name
             from
               rdb$relation_fields rf join rdb$fields f on (rf.rdb$field_source = f.rdb$field_name)
             where
@@ -103,7 +111,8 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         items = []
         for r in cursor.fetchall():
             # name type_code display_size internal_size precision scale null_ok + default
-            items.append(FieldInfo(r[0], r[1], r[2], r[2] or 0, r[3], r[4], not (r[5] == 1), r[6]))
+            items.append(FieldInfo(name=r[0], type_code=r[1], display_size=r[2], internal_size=r[2] or 0, precision=r[3],
+                                   scale=r[4], null_ok=not (r[5] == 1), default=r[6], collation=r[7]))
         return items
 
     def get_sequences(self, cursor, table_name, table_fields=()):
@@ -220,7 +229,7 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
             index = False
             expression_source = None
             order = 'DESC' if order else 'ASC'
-            constraint = constraint_name.strip()
+            constraint = constraint_name.strip().lower()
             constraint_type = constraint_type.strip()
             column = column.strip().lower()
             if other_table:

@@ -7,7 +7,7 @@ DB_HOST = '127.0.0.1'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'firebird',
+        'ENGINE': 'django.db.backends.firebird',
         'NAME': 'django-test-default',
         'USER': 'SYSDBA',
         'PASSWORD': 'masterkey',
@@ -19,11 +19,11 @@ DATABASES = {
             'NAME': 'django-test-default',
             'CHARSET': 'UTF8',
             'SERIALIZE': False,
-            'PAGE_SIZE': 8192
+            'PAGE_SIZE': 8192,
         }
     },
     'other': {
-        'ENGINE': 'firebird',
+        'ENGINE': 'django.db.backends.firebird',
         'NAME': 'fb_other.fdb',
         'USER': 'SYSDBA',
         'PASSWORD': 'masterkey',
@@ -172,7 +172,10 @@ LOGGING = {
             'level': 'ERROR',
             'filters': ['require_debug_false'],
             'class': 'django.utils.log.AdminEmailHandler'
-        }
+        },
+        'console': {
+            'class': 'logging.StreamHandler'
+        },
     },
     'loggers': {
         'django.request': {
@@ -180,5 +183,9 @@ LOGGING = {
             'level': 'ERROR',
             'propagate': True,
         },
+        'django.db.backends': {
+            'level': "INFO",
+            'handlers': ['console']
+        }
     }
 }

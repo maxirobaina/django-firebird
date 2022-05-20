@@ -3,15 +3,15 @@ from django.db import connection, models
 
 class People(models.Model):
     name = models.CharField(max_length=255)
-    models.OneToOneField('self', models.CASCADE)
+    parent = models.ForeignKey('self', models.CASCADE)
 
 
 class Message(models.Model):
-    from_field = models.OneToOneField(People, models.CASCADE, db_column='from_id')
+    from_field = models.ForeignKey(People, models.CASCADE, db_column='from_id')
 
 
 class PeopleData(models.Model):
-    people_pk = models.OneToOneField(People, models.CASCADE, primary_key=True)
+    people_pk = models.ForeignKey(People, models.CASCADE, primary_key=True)
     ssn = models.CharField(max_length=11)
 
 

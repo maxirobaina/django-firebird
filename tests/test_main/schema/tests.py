@@ -50,17 +50,10 @@ class SchemaTests(TransactionTestCase):
     Be aware that these tests are more liable than most to false results,
     as sometimes the code to check if a test has worked is almost as complex
     as the code it is testing.
-
-    Original schema tests that do not pass in Firebird:
-        - test_alter: a CharField as not to be changed to TextField. Changing datatype is not supported for BLOB or ARRAY columns.
-        - test_db_table: rename table is nor allowed
-        - test_m2m_repoint: fails because it tries to rename table
-        - test_unique
     """
 
     available_apps = []
 
-    # Important!!  this order of models is necessary for model delete without errors
     models = [
         Author, AuthorCharFieldWithIndex, AuthorTextFieldWithIndex,
         AuthorWithDefaultHeight, AuthorWithEvenLongerName, Book, BookWeak,
@@ -305,7 +298,7 @@ class SchemaTests(TransactionTestCase):
         parent = Node.objects.create()
         with connection.schema_editor() as editor:
             editor.add_field(Node, new_field)
-            editor.execute('UPDATE schema_node SET new_parent_fk_id = %s;', [parent.pk])
+            editor.execute('UPDATE schema_node SET new_parent_fk_id = ?;', [parent.pk])
         assertIndex = (
             self.assertIn
             if connection.features.indexes_foreign_keys
@@ -333,10 +326,12 @@ class SchemaTests(TransactionTestCase):
         with connection.schema_editor() as editor:
             editor.add_field(Node, new_field)
             Node._meta.add_field(new_field)
-            editor.execute('UPDATE schema_node SET new_parent_fk_id = %s;', [parent.pk])
+            editor.execute('UPDATE schema_node SET new_parent_fk_id = ?;', [parent.pk])
             editor.add_index(Node, Index(fields=['new_parent_fk'], name='new_parent_inline_fk_idx'))
         self.assertIn('new_parent_fk_id', self.get_indexes(Node._meta.db_table))
 
+    @unittest.skipUnless(connection.vendor != 'firebird',
+                         'Firebird does not support changing data type from a character type to a noncharacter type')
     @skipUnlessDBFeature('supports_foreign_keys')
     def test_char_field_with_db_index_to_fk(self):
         # Create the table
@@ -353,6 +348,7 @@ class SchemaTests(TransactionTestCase):
 
     @skipUnlessDBFeature('supports_foreign_keys')
     @skipUnlessDBFeature('supports_index_on_text_field')
+    @unittest.skipUnless(connection.vendor != 'firebird', 'Firebird does not support changing data type for text blob')
     def test_text_field_with_db_index_to_fk(self):
         # Create the table
         with connection.schema_editor() as editor:
@@ -366,6 +362,8 @@ class SchemaTests(TransactionTestCase):
             editor.alter_field(AuthorTextFieldWithIndex, old_field, new_field, strict=True)
         self.assertForeignKeyExists(AuthorTextFieldWithIndex, 'text_field_id', 'schema_author')
 
+    @unittest.skipUnless(connection.vendor != 'firebird',
+                         'Firebird does not support changing data type from a character type to a noncharacter type')
     @isolate_apps('schema')
     def test_char_field_pk_to_auto_field(self):
         class Foo(Model):
@@ -723,6 +721,7 @@ class SchemaTests(TransactionTestCase):
             editor.alter_field(Author, old_field, new_field, strict=True)
 
     @isolate_apps('schema')
+    @unittest.skipUnless(connection.vendor != 'firebird', 'Firebird does not support updating primary key type')
     def test_alter_auto_field_quoted_db_column(self):
         class Foo(Model):
             id = AutoField(primary_key=True, db_column='"quoted_id"')
@@ -755,6 +754,7 @@ class SchemaTests(TransactionTestCase):
             editor.remove_field(Author, Author._meta.get_field('id'))
             editor.alter_field(Author, old_field, new_field, strict=True)
 
+    @unittest.skipUnless(connection.vendor != 'firebird', 'Firebird does not support updating primary key type')
     @isolate_apps('schema')
     def test_alter_primary_key_quoted_db_table(self):
         class Foo(Model):
@@ -1332,6 +1332,7 @@ class SchemaTests(TransactionTestCase):
         Author.objects.create(name='Foo')
         Author.objects.create(name='Bar')
 
+    @unittest.skipUnless(connection.vendor != 'firebird', 'Firebird does not support updating primary key type')
     def test_alter_autofield_pk_to_bigautofield_pk_sequence_owner(self):
         """
         Converting an implicit PK to BigAutoField(primary_key=True) should keep
@@ -1354,6 +1355,8 @@ class SchemaTests(TransactionTestCase):
         # Fail on PostgreSQL if sequence is missing an owner.
         self.assertIsNotNone(Author.objects.create(name='Bar'))
 
+    @unittest.skipUnless(connection.vendor != 'firebird',
+                         'Firebird does not support Conversion from base type INTEGER to SMALLINT')
     def test_alter_autofield_pk_to_smallautofield_pk_sequence_owner(self):
         """
         Converting an implicit PK to SmallAutoField(primary_key=True) should
@@ -1406,6 +1409,9 @@ class SchemaTests(TransactionTestCase):
         obj = IntegerPKToAutoField.objects.create(j=1)
         self.assertIsNotNone(obj.i)
 
+        with connection.schema_editor() as editor:
+            editor.delete_model(IntegerPK)
+
     def test_alter_int_pk_to_bigautofield_pk(self):
         """
         Should be able to rename an IntegerField(primary_key=True) to
@@ -1435,6 +1441,9 @@ class SchemaTests(TransactionTestCase):
         # An id (i) is generated by the database.
         obj = IntegerPKToBigAutoField.objects.create(j=1)
         self.assertIsNotNone(obj.i)
+
+        with connection.schema_editor() as editor:
+            editor.delete_model(IntegerPK)
 
     @isolate_apps('schema')
     def test_alter_smallint_pk_to_smallautofield_pk(self):
@@ -1513,6 +1522,9 @@ class SchemaTests(TransactionTestCase):
         with self.assertRaises(IntegrityError):
             IntegerUnique.objects.create(i=1, j=2)
 
+        with connection.schema_editor() as editor:
+            editor.delete_model(IntegerPK)
+
     def test_rename(self):
         """
         Tests simple altering of fields
@@ -1526,7 +1538,7 @@ class SchemaTests(TransactionTestCase):
         self.assertNotIn("display_name", columns)
         # Alter the name field's name
         old_field = Author._meta.get_field("name")
-        new_field = CharField(max_length=254)
+        new_field = CharField(max_length=256)
         new_field.set_attributes_from_name("display_name")
         with connection.schema_editor() as editor:
             editor.alter_field(Author, old_field, new_field, strict=True)
@@ -1535,6 +1547,7 @@ class SchemaTests(TransactionTestCase):
         self.assertEqual(columns['display_name'][0], connection.features.introspected_field_types['CharField'])
         self.assertNotIn("name", columns)
 
+    @unittest.skipUnless(connection.vendor != 'firebird', 'Firebird specifics')
     @isolate_apps('schema')
     def test_rename_referenced_field(self):
         class Author(Model):
@@ -1831,7 +1844,8 @@ class SchemaTests(TransactionTestCase):
         self.assertEqual(len(self.column_classes(LocalM2M)), 1)
         # Alter a field in LocalTagM2MTest.
         old_field = LocalTagM2MTest._meta.get_field('title')
-        new_field = CharField(max_length=254)
+        # The new size must not be smaller than the old for firebird char field
+        new_field = CharField(max_length=256)
         new_field.contribute_to_class(LocalTagM2MTest, 'title1')
         # @isolate_apps() and inner models are needed to have the model
         # relations populated, otherwise this doesn't act as a regression test.
@@ -3464,6 +3478,7 @@ class SchemaTests(TransactionTestCase):
             editor.alter_field(Author, new_field, old_field, strict=True)
         self.assertEqual(self.get_constraints_for_column(Author, 'weight'), [])
 
+    @unittest.skipUnless(connection.vendor != 'firebird', 'Firebird does not support updating a foreign key referencing itself')
     def test_alter_pk_with_self_referential_field(self):
         """
         Changing the primary key field name of a model with a self-referential
@@ -3613,6 +3628,7 @@ class SchemaTests(TransactionTestCase):
             editor.create_model(Book)
             editor.add_field(Book, author)
 
+    @unittest.skipUnless(connection.vendor != 'firebird', 'Firebird specifics')
     def test_rename_table_renames_deferred_sql_references(self):
         atomic_rename = connection.features.supports_atomic_references_rename
         with connection.schema_editor(atomic=atomic_rename) as editor:
@@ -3625,6 +3641,7 @@ class SchemaTests(TransactionTestCase):
                 self.assertIs(statement.references_table('schema_author'), False)
                 self.assertIs(statement.references_table('schema_book'), False)
 
+    @unittest.skipUnless(connection.vendor != 'firebird', 'Firebird specifics')
     def test_rename_column_renames_deferred_sql_references(self):
         with connection.schema_editor() as editor:
             editor.create_model(Author)

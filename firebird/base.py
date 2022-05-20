@@ -3,16 +3,18 @@ Firebird database backend for Django.
 """
 
 try:
-    import fdb as Database
+    import firebird.driver as Database
 except ImportError as e:
     from django.core.exceptions import ImproperlyConfigured
-    raise ImproperlyConfigured("Error loading fdb module: %s" % e)
 
-from fdb.ibase import charset_map
+    raise ImproperlyConfigured("Error loading firebird driver: %s" % e)
+
+from firebird.driver import CHARSET_MAP
 
 from django.db import utils
 from django.db.backends.base.base import BaseDatabaseWrapper
 
+from django.utils.asyncio import async_unsafe
 from django.utils.encoding import smart_str
 from django.utils.functional import cached_property
 
@@ -24,9 +26,9 @@ from .introspection import DatabaseIntrospection
 from .schema import DatabaseSchemaEditor
 from .validation import DatabaseValidation
 
-
 DatabaseError = Database.DatabaseError
 IntegrityError = Database.IntegrityError
+InterfaceError = Database.InterfaceError
 OperationalError = Database.OperationalError
 
 
@@ -45,7 +47,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         'AutoField': 'integer',
         'BigAutoField': 'bigint',
         'BinaryField': 'blob sub_type 0',
-        'BooleanField': 'smallint', # for firebird 3 it changes in init_connection_state
+        'BooleanField': 'smallint',  # for firebird 3 it changes in init_connection_state
         'CharField': 'varchar(%(max_length)s)',
         'CommaSeparatedIntegerField': 'varchar(%(max_length)s)',
         'DateField': 'date',
@@ -59,7 +61,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         'BigIntegerField': 'bigint',
         'IPAddressField': 'char(15)',
         'GenericIPAddressField': 'char(39)',
-        'NullBooleanField': 'smallint', # for firebird 3 it changes in init_connection_state
+        'NullBooleanField': 'smallint',  # for firebird 3 it changes in init_connection_state
         'OneToOneField': 'integer',
         'PositiveIntegerField': 'integer',
         'PositiveSmallIntegerField': 'smallint',
@@ -72,7 +74,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
     }
 
     data_type_check_constraints = {
-        'BooleanField': '%(qn_column)s IN (0,1)', # for firebird 3 it changes in init_connection_state
+        'BooleanField': '%(qn_column)s IN (0,1)',  # for firebird 3 it changes in init_connection_state
         'NullBooleanField': '(%(qn_column)s IN (0,1)) OR (%(qn_column)s IS NULL)',
         'PositiveIntegerField': '%(qn_column)s >= 0',
         'PositiveSmallIntegerField': '%(qn_column)s >= 0',
@@ -113,6 +115,11 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         'iendswith': "LIKE '%%' || UPPER({})",
     }
 
+    def Binary(b):
+        return b
+
+    Database.Binary = Binary
+
     Database = Database
     SchemaEditorClass = DatabaseSchemaEditor
 
@@ -131,7 +138,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         self.encoding = None
 
         opts = self.settings_dict["OPTIONS"]
-        RC = Database.ISOLATION_LEVEL_READ_COMMITED
+        RC = Database.core.TraIsolation.READ_COMMITTED
         self.isolation_level = opts.get('isolation_level', RC)
 
         self.features = DatabaseFeatures(self)
@@ -152,13 +159,13 @@ class DatabaseWrapper(BaseDatabaseWrapper):
                 "settings.DATABASES is improperly configured. "
                 "Please supply the NAME value.")
 
-        # The port param is not used by fdb. It must be setting by dsn string
+        # The port param is not used by fdb. It must be setting by database string
         if settings_dict['PORT']:
-            dsn = '%(HOST)s/%(PORT)s:%(NAME)s'
+            database = '%(HOST)s/%(PORT)s:%(NAME)s'
         else:
-            dsn = '%(HOST)s:%(NAME)s'
+            database = '%(HOST)s:%(NAME)s'
         conn_params = {'charset': 'UTF8'}
-        conn_params['dsn'] = dsn % settings_dict
+        conn_params['database'] = database % settings_dict
         if settings_dict['USER']:
             conn_params['user'] = settings_dict['USER']
         if settings_dict['PASSWORD']:
@@ -169,10 +176,11 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         conn_params.update(options)
 
         self._db_charset = conn_params.get('charset')
-        self.encoding = charset_map.get(self._db_charset, 'utf_8')
+        self.encoding = CHARSET_MAP.get(self._db_charset, 'utf_8')
 
         return conn_params
 
+    @async_unsafe
     def get_new_connection(self, conn_params):
         """Opens a connection to the database."""
         return Database.connect(**conn_params)
@@ -183,12 +191,29 @@ class DatabaseWrapper(BaseDatabaseWrapper):
             self.data_types['BooleanField'] = 'boolean'
             self.data_types['NullBooleanField'] = 'boolean'
             self.data_type_check_constraints['BooleanField'] = '%(qn_column)s IN (False,True)'
-            self.data_type_check_constraints['NullBooleanField'] = '(%(qn_column)s IN (False,True)) OR (%(qn_column)s IS NULL)'
+            self.data_type_check_constraints[
+                'NullBooleanField'] = '(%(qn_column)s IN (False,True)) OR (%(qn_column)s IS NULL)'
+        if int(self.ops.firebird_version[3]) >= 4:
+            self.features.supports_timezones = True
 
     def create_cursor(self, name=None):
         """Creates a cursor. Assumes that a connection is established."""
+        if self.connection.is_closed():
+            raise InterfaceError("Cannot create cursor for closed connection")
         cursor = self.connection.cursor()
         return FirebirdCursorWrapper(cursor, self.encoding)
+
+    def _commit(self):
+        if self.connection is not None:
+            with self.wrap_database_errors:
+                if self.connection.main_transaction.is_active():
+                    return self.connection.commit()
+
+    def _rollback(self):
+        if self.connection is not None:
+            with self.wrap_database_errors:
+                if self.connection.main_transaction.is_active():
+                    return self.connection.rollback()
 
     # ##### Foreign key constraints checks handling #####
 
@@ -369,7 +394,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
                 continue
             create_string = "alter table \"" + hm['RELATION_NAME'] + "\" add "
             if not hm['CONSTRAINT_NAME'].startswith("RDB$"):
-                create_string += "constraint " + hm['CONSTRAINT_NAME']
+                create_string += "constraint " + "\"" + hm['CONSTRAINT_NAME'] + "\""
             if hm['CONSTRAINT_TYPE'].casefold() == "CHECK".casefold():
                 create_string += " " + hm['CONSTRAINT_SOURCE']
             elif hm['CONSTRAINT_TYPE'].casefold() == "FOREIGN KEY".casefold():
@@ -399,7 +424,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
                 field_list = []
                 for field in segments:
                     field_list.append('"' + field['FIELD_NAME'].strip() + '"')
-                create_string += " foreign key(" + ','.join(str(x) for x in field_list) +\
+                create_string += " foreign key(" + ','.join(str(x) for x in field_list) + \
                                  ") references " + table + "("
                 select_index_segment = """
                     select trim(trailing from rdb$field_name) as field_name from rdb$index_segments s
@@ -502,14 +527,15 @@ class DatabaseWrapper(BaseDatabaseWrapper):
 
         Pay attention at _close() method below
         """
-        pass
+        with self.wrap_database_errors:
+            self.connection.autocommit = autocommit
 
     # #### Backend-specific wrappers for PEP-249 connection methods #####
 
     def _close(self):
         if self.connection is not None:
             with self.wrap_database_errors:
-                if self.autocommit is True:
+                if self.autocommit and self.connection.main_transaction.is_active():
                     self.connection.commit()
                 return self.connection.close()
 
@@ -538,7 +564,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         if not self._server_version:
             if not self.connection:
                 self.cursor()
-            self._server_version = self.connection.db_info(Database.isc_info_firebird_version)
+            self._server_version = self.connection.info.server_version
         return self._server_version
 
 
@@ -596,7 +622,7 @@ class FirebirdCursorWrapper(object):
 
     def get_sql_code(self, e):
         try:
-            sql_code = e.args[1]
+            sql_code = e.sqlcode
         except IndexError:
             sql_code = None
         return sql_code
@@ -610,12 +636,12 @@ class FirebirdCursorWrapper(object):
             error_msg = ''
 
         try:
-            sql_code = e.args[1]
+            sql_code = e.sqlcode
         except IndexError:
             sql_code = None
 
         try:
-            error_code = e.args[2]
+            error_code = e.sqlstate
         except IndexError:
             error_code = None
 

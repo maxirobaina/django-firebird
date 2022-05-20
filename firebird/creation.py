@@ -1,5 +1,5 @@
 import sys
-import fdb as Database
+import firebird.driver as Database
 
 from django.db.backends.base.creation import BaseDatabaseCreation
 

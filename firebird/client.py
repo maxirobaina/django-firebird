@@ -18,7 +18,7 @@ class DatabaseClient(BaseDatabaseClient):
     def _get_args(self):
         args = [self.executable_name]
         params = self.connection.get_connection_params()
-        args.append(params['dsn'])
+        args.append(params['database'])
         if params['user']:
             args += ["-u", params['user']]
         if params['password']:
