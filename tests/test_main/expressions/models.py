@@ -48,7 +48,7 @@ class Company(models.Model):
 class Number(models.Model):
     integer = models.BigIntegerField(db_column='the_integer')
     float = models.FloatField(null=True, db_column='the_float')
-    decimal_value = models.DecimalField(max_digits=20, decimal_places=17, null=True)
+    decimal_value = models.DecimalField(max_digits=18, decimal_places=17, null=True)
 
     def __str__(self):
         return '%i, %.3f, %.17f' % (self.integer, self.float, self.decimal_value)
