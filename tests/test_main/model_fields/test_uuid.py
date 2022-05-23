@@ -244,6 +244,9 @@ class TestSerialization(SimpleTestCase):
 class TestValidation(SimpleTestCase):
     def test_invalid_uuid(self):
         field = models.UUIDField()
+        field.error_messages = default_error_messages = {
+            'invalid': '\'%(value)s\' is not a valid UUID.',
+        }
         with self.assertRaises(exceptions.ValidationError) as cm:
             field.clean('550e8400', None)
         self.assertEqual(cm.exception.code, 'invalid')

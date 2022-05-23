@@ -2,6 +2,7 @@ import os
 import shutil
 from unittest import skipIf
 
+import upath as upath
 from django.core.exceptions import ImproperlyConfigured
 from django.core.files import File
 from django.core.files.images import ImageFile

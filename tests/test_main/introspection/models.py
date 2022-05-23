@@ -12,7 +12,7 @@ class Country(models.Model):
 
 
 class District(models.Model):
-    city = models.ForeignKey(City, models.CASCADE, primary_key=True)
+    city = models.OneToOneField(City, models.CASCADE, primary_key=True)
     name = models.CharField(max_length=50)
 
 

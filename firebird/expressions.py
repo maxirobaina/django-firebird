@@ -1,6 +1,7 @@
 import datetime
 
-from django.db.models.expressions import RawSQL, Value
+from django.db.models.expressions import RawSQL, Value, Expression
+from django.db.models.functions import Length, Substr, ConcatPair
 from django.utils.encoding import force_str
 
 
@@ -15,6 +16,7 @@ def quote_value(value):
         return "NULL"
     else:
         return force_str(value)
+
 
 def firebird_fix_value_expr(self, compiler, connection):
     """
@@ -37,5 +39,41 @@ def firebird_fix_value_expr(self, compiler, connection):
     return sql, params
 
 
-# RawSQL.as_firebird = firebird_fix_value_expr
-# Value.as_firebird = firebird_fix_value_expr
+def firebird_length(self, compiler, connection, **extra_context):
+    return self.as_sql(compiler, connection, function='CHAR_LENGTH', **extra_context)
+
+
+def firebird_substring(self, compiler, connection, function=None, template=None, arg_joiner=None, **extra_context):
+    connection.ops.check_expression_support(self)
+    sql_parts = []
+    params = []
+    for arg in self.source_expressions:
+        arg_sql, arg_params = compiler.compile(arg)
+        sql_parts.append(arg_sql)
+        params.extend(arg_params)
+    data = {**self.extra, **extra_context}
+    # Use the first supplied value in this order: the parameter to this
+    # method, a value supplied in __init__()'s **extra (the value in
+    # `data`), or the value defined on the class.
+    if function is not None:
+        data['function'] = function
+    else:
+        data.setdefault('function', self.function)
+    template = template or data.get('template', self.template)
+    arg_joiner = arg_joiner or data.get('arg_joiner', self.arg_joiner)
+    if len(sql_parts) == 2:
+        data['expressions'] = data['field'] = sql_parts[0] + ' from ' + sql_parts[1]
+    else:
+        data['expressions'] = data['field'] = sql_parts[0] + ' from ' + sql_parts[1] + ' for ' + sql_parts[2]
+    template = template % data
+    template = template % tuple(params)
+    return template, []
+
+
+def firebird_concat(self, compiler, connection, **extra_context):
+    return self.as_sql(compiler, connection, template='%(expressions)s', arg_joiner=' || ', **extra_context)
+
+
+setattr(Length, 'as_firebird', firebird_length)
+setattr(Substr, 'as_firebird', firebird_substring)
+setattr(ConcatPair, 'as_firebird', firebird_concat)

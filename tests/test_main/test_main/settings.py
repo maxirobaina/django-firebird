@@ -3,11 +3,11 @@
 DEBUG = True
 TEMPLATE_DEBUG = DEBUG
 
-DB_HOST = '192.168.1.60'
+DB_HOST = '127.0.0.1'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'firebird',
+        'ENGINE': 'django.db.backends.firebird',
         'NAME': 'django-test-default',
         'USER': 'SYSDBA',
         'PASSWORD': 'masterkey',
@@ -19,11 +19,11 @@ DATABASES = {
             'NAME': 'django-test-default',
             'CHARSET': 'UTF8',
             'SERIALIZE': False,
-            'PAGE_SIZE': 8192
+            'PAGE_SIZE': 8192,
         }
     },
     'other': {
-        'ENGINE': 'firebird',
+        'ENGINE': 'django.db.backends.firebird',
         'NAME': 'fb_other.fdb',
         'USER': 'SYSDBA',
         'PASSWORD': 'masterkey',
@@ -40,6 +40,8 @@ DATABASES = {
     }
 
 }
+
+DEFAULT_AUTO_FIELD = 'django.db.models.AutoField'
 
 # Local time zone for this installation. Choices can be found here:
 # http://en.wikipedia.org/wiki/List_of_tz_zones_by_name
@@ -170,7 +172,10 @@ LOGGING = {
             'level': 'ERROR',
             'filters': ['require_debug_false'],
             'class': 'django.utils.log.AdminEmailHandler'
-        }
+        },
+        'console': {
+            'class': 'logging.StreamHandler'
+        },
     },
     'loggers': {
         'django.request': {
@@ -178,5 +183,9 @@ LOGGING = {
             'level': 'ERROR',
             'propagate': True,
         },
+        'django.db.backends': {
+            'level': "INFO",
+            'handlers': ['console']
+        }
     }
 }

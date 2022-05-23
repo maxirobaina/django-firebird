@@ -8,7 +8,7 @@ from decimal import Decimal
 from unittest import mock
 
 from django.core.exceptions import FieldError
-from django.db import DatabaseError, NotSupportedError, connection
+from django.db import DatabaseError, NotSupportedError, connection, models
 from django.db.models import (
     AutoField, Avg, BinaryField, BooleanField, Case, CharField, Count,
     DateField, DateTimeField, DecimalField, DurationField, Exists, Expression,
@@ -20,7 +20,7 @@ from django.db.models.expressions import (
     Col, Combinable, CombinedExpression, RawSQL, Ref,
 )
 from django.db.models.functions import (
-    Coalesce, Concat, Left, Length, Lower, Substr, Upper,
+    Cast, Coalesce, Concat, Left, Length, Lower, Substr, Upper,
 )
 from django.db.models.sql import constants
 from django.db.models.sql.datastructures import Join
@@ -928,13 +928,94 @@ class IterableLookupInnerExpressionsTests(TestCase):
                          "This defensive test only works on databases that don't validate parameter types")
     def test_complex_expressions_do_not_introduce_sql_injection_via_untrusted_string_inclusion(self):
         """
-        Make sure F objects can be deepcopied (#23492)
+        This tests that SQL injection isn't possible using compilation of
+        expressions in iterable filters, as their compilation happens before
+        the main query compilation. It's limited to SQLite, as PostgreSQL,
+        Oracle and other vendors have defense in depth against this by type
+        checking. Testing against SQLite (the most permissive of the built-in
+        databases) demonstrates that the problem doesn't exist while keeping
+        the test simple.
         """
+        queryset = Company.objects.filter(name__in=[F('num_chairs') + '1)) OR ((1==1'])
+        self.assertQuerysetEqual(queryset, [], ordered=False)
+
+    def test_in_lookup_allows_F_expressions_and_expressions_for_datetimes(self):
+        start = datetime.datetime(2016, 2, 3, 15, 0, 0)
+        end = datetime.datetime(2016, 2, 5, 15, 0, 0)
+        experiment_1 = Experiment.objects.create(
+            name='Integrity testing',
+            assigned=start.date(),
+            start=start,
+            end=end,
+            completed=end.date(),
+            estimated_time=end - start,
+        )
+        experiment_2 = Experiment.objects.create(
+            name='Taste testing',
+            assigned=start.date(),
+            start=start,
+            end=end,
+            completed=end.date(),
+            estimated_time=end - start,
+        )
+        r1 = Result.objects.create(
+            experiment=experiment_1,
+            result_time=datetime.datetime(2016, 2, 4, 15, 0, 0),
+        )
+        Result.objects.create(
+            experiment=experiment_1,
+            result_time=datetime.datetime(2016, 3, 10, 2, 0, 0),
+        )
+        Result.objects.create(
+            experiment=experiment_2,
+            result_time=datetime.datetime(2016, 1, 8, 5, 0, 0),
+        )
+
+        within_experiment_time = [F('experiment__start'), F('experiment__end')]
+        queryset = Result.objects.filter(result_time__range=within_experiment_time)
+        self.assertSequenceEqual(queryset, [r1])
+
+        within_experiment_time = [F('experiment__start'), F('experiment__end')]
+        queryset = Result.objects.filter(result_time__range=within_experiment_time)
+        self.assertSequenceEqual(queryset, [r1])
+
+
+class FTests(SimpleTestCase):
+
+    def test_deepcopy(self):
         f = F("foo")
         g = deepcopy(f)
         self.assertEqual(f.name, g.name)
 
-    def test_f_reuse(self):
+    def test_deconstruct(self):
+        f = F('name')
+        path, args, kwargs = f.deconstruct()
+        self.assertEqual(path, 'django.db.models.expressions.F')
+        self.assertEqual(args, (f.name,))
+        self.assertEqual(kwargs, {})
+
+    def test_equal(self):
+        f = F('name')
+        same_f = F('name')
+        other_f = F('username')
+        self.assertEqual(f, same_f)
+        self.assertNotEqual(f, other_f)
+
+    def test_hash(self):
+        d = {F('name'): 'Bob'}
+        self.assertIn(F('name'), d)
+        self.assertEqual(d[F('name')], 'Bob')
+
+    def test_not_equal_Value(self):
+        f = F('name')
+        value = Value('name')
+        self.assertNotEqual(f, value)
+        self.assertNotEqual(value, f)
+
+
+class ExpressionsTests(TestCase):
+
+    def test_F_reuse(self):
         f = F('id')
         n = Number.objects.create(integer=-1)
         c = Company.objects.create(
@@ -950,77 +1031,119 @@ class IterableLookupInnerExpressionsTests(TestCase):
         self.assertEqual(c_qs.get(), c)
 
     def test_patterns_escape(self):
-        """
-        Test that special characters (e.g. %, _ and \) stored in database are
+        r"""
+        Special characters (e.g. %, _ and \) stored in database are
         properly escaped when using a pattern lookup with an expression
         refs #16731
         """
         Employee.objects.bulk_create([
-            Employee(firstname="%Joh\\nny", lastname="%Joh\\n"),
             Employee(firstname="Johnny", lastname="%John"),
             Employee(firstname="Jean-Claude", lastname="Claud_"),
-            Employee(firstname="Jean-Claude", lastname="Claude"),
             Employee(firstname="Jean-Claude", lastname="Claude%"),
             Employee(firstname="Johnny", lastname="Joh\\n"),
-            Employee(firstname="Johnny", lastname="John"),
             Employee(firstname="Johnny", lastname="_ohn"),
         ])
+        claude = Employee.objects.create(firstname='Jean-Claude', lastname='Claude')
+        john = Employee.objects.create(firstname='Johnny', lastname='John')
+        john_sign = Employee.objects.create(firstname='%Joh\\nny', lastname='%Joh\\n')
 
-        self.assertQuerysetEqual(
+        self.assertCountEqual(
             Employee.objects.filter(firstname__contains=F('lastname')),
-            ["<Employee: %Joh\\nny %Joh\\n>", "<Employee: Jean-Claude Claude>", "<Employee: Johnny John>"],
-            ordered=False)
-
-        self.assertQuerysetEqual(
+            [john_sign, john, claude],
+        )
+        self.assertCountEqual(
             Employee.objects.filter(firstname__startswith=F('lastname')),
-            ["<Employee: %Joh\\nny %Joh\\n>", "<Employee: Johnny John>"],
-            ordered=False)
-
-        self.assertQuerysetEqual(
+            [john_sign, john],
+        )
+        self.assertSequenceEqual(
             Employee.objects.filter(firstname__endswith=F('lastname')),
-            ["<Employee: Jean-Claude Claude>"],
-            ordered=False)
+            [claude],
+        )
 
     def test_insensitive_patterns_escape(self):
-        """
-        Test that special characters (e.g. %, _ and \) stored in database are
+        r"""
+        Special characters (e.g. %, _ and \) stored in database are
         properly escaped when using a case insensitive pattern lookup with an
         expression -- refs #16731
         """
         Employee.objects.bulk_create([
-            Employee(firstname="%Joh\\nny", lastname="%joh\\n"),
             Employee(firstname="Johnny", lastname="%john"),
             Employee(firstname="Jean-Claude", lastname="claud_"),
-            Employee(firstname="Jean-Claude", lastname="claude"),
             Employee(firstname="Jean-Claude", lastname="claude%"),
             Employee(firstname="Johnny", lastname="joh\\n"),
-            Employee(firstname="Johnny", lastname="john"),
             Employee(firstname="Johnny", lastname="_ohn"),
         ])
+        claude = Employee.objects.create(firstname='Jean-Claude', lastname='claude')
+        john = Employee.objects.create(firstname='Johnny', lastname='john')
+        john_sign = Employee.objects.create(firstname='%Joh\\nny', lastname='%joh\\n')
 
-        self.assertQuerysetEqual(
+        self.assertCountEqual(
             Employee.objects.filter(firstname__icontains=F('lastname')),
-            ["<Employee: %Joh\\nny %joh\\n>", "<Employee: Jean-Claude claude>", "<Employee: Johnny john>"],
-            ordered=False)
-
-        self.assertQuerysetEqual(
+            [john_sign, john, claude],
+        )
+        self.assertCountEqual(
             Employee.objects.filter(firstname__istartswith=F('lastname')),
-            ["<Employee: %Joh\\nny %joh\\n>", "<Employee: Johnny john>"],
-            ordered=False)
-
-        self.assertQuerysetEqual(
+            [john_sign, john],
+        )
+        self.assertSequenceEqual(
             Employee.objects.filter(firstname__iendswith=F('lastname')),
-            ["<Employee: Jean-Claude claude>"],
-            ordered=False)
+            [claude],
+        )
+
+
+@isolate_apps('expressions')
+class SimpleExpressionTests(SimpleTestCase):
+
+    def test_equal(self):
+        self.assertEqual(Expression(), Expression())
+        self.assertEqual(
+            Expression(IntegerField()),
+            Expression(output_field=IntegerField())
+        )
+        self.assertEqual(Expression(IntegerField()), mock.ANY)
+        self.assertNotEqual(
+            Expression(IntegerField()),
+            Expression(CharField())
+        )
+
+        class TestModel(Model):
+            field = IntegerField()
+            other_field = IntegerField()
+
+        self.assertNotEqual(
+            Expression(TestModel._meta.get_field('field')),
+            Expression(TestModel._meta.get_field('other_field')),
+        )
+
+    def test_hash(self):
+        self.assertEqual(hash(Expression()), hash(Expression()))
+        self.assertEqual(
+            hash(Expression(IntegerField())),
+            hash(Expression(output_field=IntegerField()))
+        )
+        self.assertNotEqual(
+            hash(Expression(IntegerField())),
+            hash(Expression(CharField())),
+        )
+
+        class TestModel(Model):
+            field = IntegerField()
+            other_field = IntegerField()
+
+        self.assertNotEqual(
+            hash(Expression(TestModel._meta.get_field('field'))),
+            hash(Expression(TestModel._meta.get_field('other_field'))),
+        )
 
 
 class ExpressionsNumericTests(TestCase):
 
-    def setUp(self):
+    @classmethod
+    def setUpTestData(cls):
         Number(integer=-1).save()
         Number(integer=42).save()
         Number(integer=1337).save()
-        self.assertEqual(Number.objects.update(float=F('integer')), 3)
+        Number.objects.update(float=F('integer'))
 
     def test_fill_with_value_from_same_object(self):
         """
@@ -1029,11 +1152,8 @@ class ExpressionsNumericTests(TestCase):
         """
         self.assertQuerysetEqual(
             Number.objects.all(),
-            [
-                '<Number: -1, -1.000>',
-                '<Number: 42, 42.000>',
-                '<Number: 1337, 1337.000>'
-            ],
+            [(-1, -1), (42, 42), (1337, 1337)],
+            lambda n: (n.integer, round(n.float)),
             ordered=False
         )
 
@@ -1041,18 +1161,11 @@ class ExpressionsNumericTests(TestCase):
         """
         We can increment a value of all objects in a query set.
         """
-        self.assertEqual(
-            Number.objects.filter(integer__gt=0)
-                  .update(integer=F('integer') + 1),
-            2)
-
+        self.assertEqual(Number.objects.filter(integer__gt=0).update(integer=F('integer') + 1), 2)
         self.assertQuerysetEqual(
             Number.objects.all(),
-            [
-                '<Number: -1, -1.000>',
-                '<Number: 43, 42.000>',
-                '<Number: 1338, 1337.000>'
-            ],
+            [(-1, -1), (43, 42), (1338, 1337)],
+            lambda n: (n.integer, round(n.float)),
             ordered=False
         )
 
@@ -1061,16 +1174,11 @@ class ExpressionsNumericTests(TestCase):
         We can filter for objects, where a value is not equals the value
         of an other field.
         """
-        self.assertEqual(
-            Number.objects.filter(integer__gt=0)
-                  .update(integer=F('integer') + 1),
-            2)
+        self.assertEqual(Number.objects.filter(integer__gt=0).update(integer=F('integer') + 1), 2)
         self.assertQuerysetEqual(
             Number.objects.exclude(float=F('integer')),
-            [
-                '<Number: 43, 42.000>',
-                '<Number: 1338, 1337.000>'
-            ],
+            [(43, 42), (1338, 1337)],
+            lambda n: (n.integer, round(n.float)),
             ordered=False
         )
 
@@ -1085,14 +1193,19 @@ class ExpressionsNumericTests(TestCase):
         self.assertEqual(Number.objects.get(pk=n.pk).integer, 10)
         self.assertEqual(Number.objects.get(pk=n.pk).float, Approximate(256.900, places=3))
 
-    def test_incorrect_field_expression(self):
-        with six.assertRaisesRegex(self, FieldError, "Cannot resolve keyword u?'nope' into field.*"):
-            list(Employee.objects.filter(firstname=F('nope')))
+    def test_decimal_expression(self):
+        n = Number.objects.create(integer=1, decimal_value=Decimal('0.5'))
+        n.decimal_value = F('decimal_value') - Decimal('0.4')
+        n.save()
+        n.refresh_from_db()
+        self.assertEqual(n.decimal_value, Decimal('0.1'))
 
 
 class ExpressionOperatorTests(TestCase):
-    def setUp(self):
-        self.n = Number.objects.create(integer=42, float=15.5)
+    @classmethod
+    def setUpTestData(cls):
+        cls.n = Number.objects.create(integer=42, float=15.5)
+        cls.n1 = Number.objects.create(integer=-42, float=-15.5)
 
     def test_lefthand_addition(self):
         # LH Addition of floats and integers
@@ -1558,7 +1671,7 @@ class FTimeDeltaTests(TestCase):
         self.assertQuerysetEqual(over_estimate, ['e3', 'e4', 'e5'], lambda e: e.name)
 
     def test_duration_with_datetime_microseconds(self):
-        delta = datetime.timedelta(microseconds=8999999999999999)
+        delta = datetime.timedelta(microseconds=8990000000000000)
         qs = Experiment.objects.annotate(dt=ExpressionWrapper(
             F('start') + delta,
             output_field=DateTimeField(),
@@ -1585,8 +1698,8 @@ class FTimeDeltaTests(TestCase):
         )
         expected_start = datetime.datetime(2010, 6, 23, 9, 45, 0)
         # subtract 30 microseconds
-        experiments = experiments.annotate(new_start=F('new_start') + datetime.timedelta(microseconds=-30))
-        expected_start += datetime.timedelta(microseconds=+746970)
+        experiments = experiments.annotate(new_start=F('new_start') + datetime.timedelta(microseconds=-33))
+        expected_start += datetime.timedelta(microseconds=+747000)
         experiments.update(start=F('new_start'))
         e0 = Experiment.objects.get(name='e0')
         self.assertEqual(e0.start, expected_start)
