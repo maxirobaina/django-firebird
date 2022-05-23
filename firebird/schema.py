@@ -841,7 +841,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
 
     def prepare_default(self, value):
         # If the major server version is less than 3 then use `smallint` for the boolean field
-        if isinstance(value, bool) and int(self.connection.ops.firebird_version[3]) < 3:
+        if isinstance(value, bool) and int(self.connection.ops.firebird_version[4]) < 3:
             return "1" if value else "0"
         s = force_str(value)
         return self.quote_value(s)

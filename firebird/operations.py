@@ -46,14 +46,14 @@ class DatabaseOperations(BaseDatabaseOperations):
         Useful for ask for just a part of a version number.
 
         Indicies for parts:
-            PLATFORM = 0,
-            TYPE = 1,
-            FULL_VERSION = 2,
-            MAJOR = 3,
-            MINOR = 4,
-            VARIANT = 5,
-            BUILD = 6,
-            SERVER_NAME = 7.
+            FULL_VERSION_IDX = 1;
+            PLATFORM_IDX = 2;
+            TYPE_IDX = 3;
+            MAJOR_IDX = 4;
+            MINOR_IDX = 5;
+            VARIANT_IDX = 6;
+            BUILD_IDX = 7;
+            SERVER_NAME_IDX = 8;
         """
         server_version = self.connection.server_version
         pattern = re.compile(r"((\w{2})-(\w)(\d+)\.(\d+)\.(\d+)\.(\d+)(?:-\S+)?) (.+)")

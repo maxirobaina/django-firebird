@@ -80,7 +80,7 @@ class DatabaseFeatures(BaseDatabaseFeatures):
         introspection results; it should provide expectations, not run an introspection
         itself.
         """
-        if int(self.connection.ops.firebird_version[3]) >= 3:
+        if int(self.connection.ops.firebird_version[4]) >= 3:
             if isinstance(field, NullBooleanField):
                 return 'BooleanField(blank=True, null=True)'
             else:
