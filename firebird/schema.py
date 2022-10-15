@@ -140,7 +140,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
                 self.execute(self._delete_constraint_sql(self.sql_delete_index, model, result))
         # Created uniques
         for fields in news.difference(olds):
-            columns = [model._meta.get_field(field).column for field in fields]
+            columns = [model._meta.get_field(field) for field in fields]
             create_statement = self._create_unique_sql(model, columns)
             self.create_unique(create_statement)
 
@@ -929,7 +929,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         # Add any unique_togethers (always deferred, as some fields might be
         # created afterwards, like geometry fields with some backends)
         for fields in model._meta.unique_together:
-            columns = [model._meta.get_field(field).column for field in fields]
+            columns = [model._meta.get_field(field) for field in fields]
             # self.deferred_sql.append(self._create_unique_sql(model, columns))
             self.create_unique(self._create_unique_sql(model, columns))
 
