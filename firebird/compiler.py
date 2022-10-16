@@ -23,6 +23,12 @@ class SQLCompiler(compiler.SQLCompiler):
     def as_sql(self, with_limits=True, with_col_aliases=False):
         sql, params = super(SQLCompiler, self).as_sql(with_limits=False, with_col_aliases=with_col_aliases)
 
+        sql_parts = sql.partition(' FROM ')
+        param_count = sql_parts[0].count('%')
+        if param_count:
+            sql = (sql_parts[0] % tuple(params[:param_count]))+''.join(sql_parts[1:])
+            params = params[param_count:]
+
         if with_limits:
             limits = []
             if self.query.high_mark is not None:
