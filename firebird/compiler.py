@@ -26,7 +26,7 @@ class SQLCompiler(compiler.SQLCompiler):
         sql_parts = sql.partition(' FROM ')
         param_count = sql_parts[0].count('%')
         if param_count:
-            sql = (sql_parts[0] % tuple(params[:param_count]))+''.join(sql_parts[1:])
+            sql = (sql_parts[0] % tuple([f'\'{param}\'' for param in params[:param_count]]))+''.join(sql_parts[1:])
             params = params[param_count:]
 
         if with_limits:
