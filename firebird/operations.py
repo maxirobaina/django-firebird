@@ -307,10 +307,10 @@ class DatabaseOperations(BaseDatabaseOperations):
         field = expression.field
 
         val = utils.format_number(value, field.max_digits, field.decimal_places)
-        
+
         if val is not None:
             value = decimal.Decimal(val)
-            
+
         return value
 
     def convert_ipfield_value(self, value, expression, connection, context):
@@ -465,7 +465,7 @@ class DatabaseOperations(BaseDatabaseOperations):
                                                      'table_name': table_name})
                     break
             for f in model._meta.many_to_many:
-                if not f.rel.through:
+                if not f.remote_field.through:
                     table_name = self.quote_name(f.m2m_db_table())
                     column_name = self.quote_name(f.column)
                     sequence_name = get_autoinc_sequence_name(self, f.m2m_db_table())
@@ -510,7 +510,7 @@ class DatabaseOperations(BaseDatabaseOperations):
                     procedures.append(procedure_name)
                     break
             for f in model._meta.many_to_many:
-                if not f.rel.through:
+                if not f.remote_field.through:
                     table_name = self.quote_name(f.m2m_db_table())
                     column_name = self.quote_name(f.column)
                     sequence_name = get_autoinc_sequence_name(self, f.m2m_db_table())
