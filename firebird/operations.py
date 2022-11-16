@@ -481,7 +481,7 @@ class DatabaseOperations(BaseDatabaseOperations):
                                                      'table_name': table_name})
                     break
             for f in model._meta.many_to_many:
-                if not f.rel.through:
+                if not f.remote_field.through:
                     table_name = self.quote_name(f.m2m_db_table())
                     column_name = self.quote_name(f.column)
                     sequence_name = get_autoinc_sequence_name(self, f.m2m_db_table())
@@ -525,7 +525,7 @@ class DatabaseOperations(BaseDatabaseOperations):
                     procedures.append(procedure_name)
                     break
             for f in model._meta.many_to_many:
-                if not f.rel.through:
+                if not f.remote_field.through:
                     table_name = self.quote_name(f.m2m_db_table())
                     column_name = self.quote_name(f.column)
                     sequence_name = get_autoinc_sequence_name(self, f.m2m_db_table())
