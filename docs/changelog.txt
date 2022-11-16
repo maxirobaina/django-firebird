@@ -1,6 +1,12 @@
 Changelog
 =========
 
+
+v2.2.1
+------
++ Fixed issue #108 - AttributeError: 'ManyToManyField' object has no attribute 'rel'
+
+
 v2.2.0
 ------
 + Django 2.2 LTS support
