@@ -14,7 +14,7 @@ pyparsing==2.4.6
 pytest==5.3.5
 pytz==2019.3
 sphinx-bootstrap-theme==0.8.1
-sqlparse==0.3.0
+sqlparse==0.4.4
 testcase==0.1.0
 toolz==0.10.0
 upath==1.0
