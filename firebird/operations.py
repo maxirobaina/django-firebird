@@ -11,6 +11,7 @@ from django.utils.functional import cached_property
 from django.utils import timezone
 from django.utils.encoding import force_bytes, force_text
 from firebird.driver import CHARSET_MAP
+from firebird.driver.types import BPBItem, BlobType
 
 from .base import Database
 
@@ -276,7 +277,16 @@ class DatabaseOperations(BaseDatabaseOperations):
 
     def convert_textfield_value(self, value, expression, connection):
         if isinstance(value, Database.core.BlobReader):
-            value = value.read()
+            if value.closed:
+                with connection.cursor() as cursor:
+                    value._blob = cursor.cursor.connection._att.open_blob(cursor.cursor.cursor.transaction._tra,
+                                                                         value.blob_id,
+                                                                         bytes([1, BPBItem.TYPE, 1, BlobType.STREAM]))
+                    result = value.read()
+                    value.close()
+                    value = result
+            else:
+                value = value.read()
         if value is not None:
             db_charset = None
             # Trying to get character set from connection parameters to convert a string value
