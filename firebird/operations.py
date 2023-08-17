@@ -216,14 +216,15 @@ class DatabaseOperations(BaseDatabaseOperations):
             return "UPPER(%s)"
         return "%s"
 
-    def for_update_sql(self, nowait=False, skip_locked=False, of=()):
+    def for_update_sql(self, nowait=False, skip_locked=False, of=(), no_key=False):
         """
         Returns the FOR UPDATE SQL clause to lock rows for an update operation.
         """
         # The nowait param depends on transaction setting
         # return 'FOR UPDATE WITH LOCK'
-        return 'FOR UPDATE%s' % (
-            ' OF %s' % ', '.join(of) if of else ''
+        return 'FOR UPDATE%s%s' % (
+            ' OF %s' % ', '.join(of) if of else '',
+            '' if skip_locked else ' WITH LOCK',
         )
 
     def fulltext_search_sql(self, field_name):

@@ -10,7 +10,7 @@ class DatabaseFeatures(BaseDatabaseFeatures):
     can_return_columns_from_insert = True
     has_select_for_update = True
     has_select_for_update_nowait = False
-    has_select_for_update_skip_locked = False
+    has_select_for_update_skip_locked = True
     has_select_for_update_of = True
     supports_tablespaces = False
     supports_long_model_names = False
