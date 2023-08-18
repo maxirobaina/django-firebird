@@ -1,4 +1,4 @@
-# Django settings for test_main project.
+# Django's settings for test_main project.
 
 DEBUG = True
 TEMPLATE_DEBUG = DEBUG
@@ -7,7 +7,7 @@ DB_HOST = '127.0.0.1'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.firebird',
+        'ENGINE': 'django_reddatabase',
         'NAME': 'django-test-default',
         'USER': 'SYSDBA',
         'PASSWORD': 'masterkey',
@@ -23,7 +23,7 @@ DATABASES = {
         }
     },
     'other': {
-        'ENGINE': 'django.db.backends.firebird',
+        'ENGINE': 'django_reddatabase',
         'NAME': 'fb_other.fdb',
         'USER': 'SYSDBA',
         'PASSWORD': 'masterkey',
