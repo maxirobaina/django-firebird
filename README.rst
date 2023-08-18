@@ -41,23 +41,15 @@ Installation
 
 **From repository**
 
+    pip install git+https://github.com/red-soft-ru/django-reddatabase.git
+
+**Manual Installation**
+
     git clone https://github.com/red-soft-ru/django-reddatabase.git
 
     cd django-reddatabase
 
     sudo python setup.py install
-
-**Manual Installation**
-
-Instructions for Ubuntu/Debian
-I assume you have installed django from source with python setup.py install
-
-
-    cd /usr/local/lib/python3.8/dist-packages
-
-    pip install git+https://github.com/red-soft-ru/django-reddatabase.git
-
-    sudo ln -s django-reddatabase/django_reddatabase django_reddatabase
 
 Configuration
 -------------
