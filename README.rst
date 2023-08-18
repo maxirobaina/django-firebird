@@ -41,9 +41,9 @@ Installation
 
 **From repository**
 
-    git clone git://github.com/maxirobaina/django-firebird.git
+    git clone https://github.com/red-soft-ru/django-reddatabase.git
 
-    cd django-firebird
+    cd django-reddatabase
 
     sudo python setup.py install
 
@@ -55,13 +55,9 @@ I assume you have installed django from source with python setup.py install
 
     cd /usr/local/lib/python3.8/dist-packages
 
-    sudo git clone git://github.com/maxirobaina/django-firebird.git
+    pip install git+https://github.com/red-soft-ru/django-reddatabase.git
 
-    sudo ln -s django-firebird/django_firebird django_firebird
-
-    cd /usr/local/lib/python3.8/dist-packages/django/db/backends
-
-    sudo ln -s /usr/local/lib/python3.8/dist-packages/django-firebird/django_firebird
+    sudo ln -s django-reddatabase/django_reddatabase django_reddatabase
 
 Configuration
 -------------
@@ -70,7 +66,7 @@ Modify your setting.py ::
 
     DATABASES = {
         'default': {
-            'ENGINE' : 'django.db.backends.django_firebird',
+            'ENGINE' : 'django_reddatabase',
             'NAME' : '/var/lib/firebird/3.0/data/django_firebird.fdb', # Path to database or db alias
             'USER' : 'SYSDBA',           # Your db user
             'PASSWORD' : '*****',    # db user password
