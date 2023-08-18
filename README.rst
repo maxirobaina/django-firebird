@@ -57,11 +57,11 @@ I assume you have installed django from source with python setup.py install
 
     sudo git clone git://github.com/maxirobaina/django-firebird.git
 
-    sudo ln -s django-firebird/firebird firebird
+    sudo ln -s django-firebird/django_firebird django_firebird
 
     cd /usr/local/lib/python3.8/dist-packages/django/db/backends
 
-    sudo ln -s /usr/local/lib/python3.8/dist-packages/django-firebird/firebird
+    sudo ln -s /usr/local/lib/python3.8/dist-packages/django-firebird/django_firebird
 
 Configuration
 -------------
@@ -70,7 +70,7 @@ Modify your setting.py ::
 
     DATABASES = {
         'default': {
-            'ENGINE' : 'django.db.backends.firebird',
+            'ENGINE' : 'django.db.backends.django_firebird',
             'NAME' : '/var/lib/firebird/3.0/data/django_firebird.fdb', # Path to database or db alias
             'USER' : 'SYSDBA',           # Your db user
             'PASSWORD' : '*****',    # db user password

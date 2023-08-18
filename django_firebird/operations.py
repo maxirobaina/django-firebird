@@ -17,7 +17,7 @@ from .base import Database
 
 
 class DatabaseOperations(BaseDatabaseOperations):
-    compiler_module = "firebird.compiler"
+    compiler_module = "django_firebird.compiler"
 
     # Integer field safe ranges by `internal_type` as documented
     # in docs/ref/models/fields.txt.
