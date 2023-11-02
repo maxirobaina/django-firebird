@@ -11,7 +11,7 @@ packaging==20.1
 pluggy==0.13.1
 py==1.10.0
 pyparsing==2.4.6
-pytest==5.3.5
+pytest==7.2.0
 pytz==2019.3
 sphinx-bootstrap-theme==0.8.1
 sqlparse==0.4.4
