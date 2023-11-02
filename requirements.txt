@@ -1,6 +1,6 @@
 asgiref==3.2.3
 attrs==19.3.0
-Django==3.2.20
+Django==3.2.23
 django-aggregates==0.1.3
 firebird-driver==1.4.3
 future==0.18.3
