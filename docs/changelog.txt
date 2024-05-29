@@ -1,6 +1,11 @@
 Changelog
 =========
 
+v2.2.2
+------
++ Fixed a strange error droping field with check constraint on firebird 3.0.x
+  More context at https://github.com/FirebirdSQL/firebird/issues/8135
+
 
 v2.2.1
 ------
