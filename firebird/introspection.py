@@ -186,12 +186,12 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
             cursor.execute("""
             SELECT
               LOWER(s.RDB$FIELD_NAME) AS field_name,
-    
+
               LOWER(case
                 when rc.RDB$CONSTRAINT_TYPE is not null then rc.RDB$CONSTRAINT_TYPE
                 else 'INDEX'
               end) AS constraint_type
-    
+
             FROM RDB$INDEX_SEGMENTS s
             LEFT JOIN RDB$INDICES i ON i.RDB$INDEX_NAME = s.RDB$INDEX_NAME
             LEFT JOIN RDB$RELATION_CONSTRAINTS rc ON rc.RDB$INDEX_NAME = s.RDB$INDEX_NAME
@@ -250,7 +250,7 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
             when s.RDB$FIELD_NAME is not null then s.RDB$FIELD_NAME
             else ''
           end AS field_name,
-          
+
           i2.RDB$RELATION_NAME AS references_table,
           s2.RDB$FIELD_NAME AS references_field,
           i.RDB$UNIQUE_FLAG,
@@ -328,6 +328,21 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
             order by s.rdb$field_position """ % (table, field,))
 
         return [index_name[0].strip() for index_name in cursor.fetchall()]
+
+    def _get_check_constraints(self, cursor, table_name, field_name):
+        table = "'%s'" % table_name.upper()
+        field = "'%s'" % field_name.upper()
+        cursor.execute("""
+            select distinct rc.rdb$constraint_name as check_constraint_name
+            from rdb$relation_constraints rc
+            join rdb$check_constraints cc on rc.rdb$constraint_name = cc.rdb$constraint_name
+            join rdb$triggers c on cc.rdb$trigger_name = c.rdb$trigger_name
+            join rdb$relation_fields rf on rc.rdb$relation_name = rf.rdb$relation_name
+            where rc.rdb$relation_name = %s
+            and rf.rdb$field_name = %s
+            and rc.rdb$constraint_type = 'CHECK'
+        """ % (table, field,))
+        return [cn[0].strip() for cn in cursor.fetchall()]
 
     def _name_to_index(self, cursor, table_name):
         """Return a dictionary of {field_name: field_index} for the given table.

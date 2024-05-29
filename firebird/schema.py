@@ -47,8 +47,8 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         engine_ver = str(self.connection.connection.engine_version).split('.')
         if engine_ver and len(engine_ver) > 0 and int(engine_ver[0]) >= 3:
             sql = """
-                ALTER TABLE \"%(table_name)s\" 
-                ALTER \"%(column)s\" 
+                ALTER TABLE \"%(table_name)s\"
+                ALTER \"%(column)s\"
                 %(null_flag)s NOT NULL
             """
             null_flag = 'DROP' if is_null else 'SET'
@@ -237,6 +237,12 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             indexes = self.connection.introspection._get_field_indexes(cursor, model._meta.db_table, field.column)
         return indexes
 
+    def _get_field_check_constraints(self, model, field):
+        with self.connection.cursor() as cursor:
+            db_table = model._meta.db_table
+            checks = self.connection.introspection._get_check_constraints(cursor, db_table, field.column)
+        return checks
+
     def remove_field(self, model, field):
         # If remove a AutoField, we need remove all related stuff
         # if isinstance(field, AutoField):
@@ -250,6 +256,11 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         # If 'field' is a ForeingKey and It has defined extra indexes, delete that indexes (Github issue #70)
         for index_name in self._get_field_indexes(model, field):
             sql = self._delete_constraint_sql(self.sql_delete_index, model, index_name)
+            self.execute(sql)
+
+        # If field has check constraint, then remove it first
+        for check_constraint_name in self._get_field_check_constraints(model, field):
+            sql = self._delete_constraint_sql(self.sql_delete_constraint, model, check_constraint_name)
             self.execute(sql)
 
         super(DatabaseSchemaEditor, self).remove_field(model, field)
