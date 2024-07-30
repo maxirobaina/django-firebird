@@ -34,6 +34,7 @@ OperationalError = Database.OperationalError
 
 class DatabaseWrapper(BaseDatabaseWrapper):
     vendor = 'firebird'
+    display_name = "Firebird"
 
     # This dictionary maps Field objects to their associated Firebird column
     # types, as strings. Column-type strings can contain format strings; they'll
@@ -63,6 +64,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         'GenericIPAddressField': 'char(39)',
         'NullBooleanField': 'smallint',  # for firebird 3 it changes in init_connection_state
         'OneToOneField': 'integer',
+        'PositiveBigIntegerField': 'bigint',
         'PositiveIntegerField': 'integer',
         'PositiveSmallIntegerField': 'smallint',
         'SlugField': 'varchar(%(max_length)s)',
@@ -115,10 +117,11 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         'iendswith': "LIKE '%%' || UPPER({})",
     }
 
-    def Binary(b):
-        return b
+    @staticmethod
+    def binary(value):
+        return bytes(value)
 
-    Database.Binary = Binary
+    Database.Binary = staticmethod(binary)
 
     Database = Database
     SchemaEditorClass = DatabaseSchemaEditor
@@ -174,6 +177,8 @@ class DatabaseWrapper(BaseDatabaseWrapper):
             conn_params['password'] = settings_dict['PASSWORD']
         if 'ROLE' in settings_dict:
             conn_params['role'] = settings_dict['ROLE']
+        if 'TIME_ZONE' in settings_dict:
+            conn_params['session_time_zone'] = settings_dict['TIME_ZONE']
         options = settings_dict['OPTIONS'].copy()
         conn_params.update(options)
 
@@ -201,7 +206,11 @@ class DatabaseWrapper(BaseDatabaseWrapper):
             self.data_type_check_constraints[
                 'NullBooleanField'] = '(%(qn_column)s IN (False,True)) OR (%(qn_column)s IS NULL)'
         if int(self.ops.firebird_version[3]) >= 4:
+            self.features.supports_over_clause = True
+            self.features.supports_partial_indexes = True
             self.features.supports_timezones = True
+            self.data_types['DateTimeField'] = 'timestamp with time zone'
+            self.data_types['TimeField'] = 'time with time zone'
 
     @async_unsafe
     def close(self):
@@ -217,9 +226,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         if self.get_autocommit():
             self.connection.begin(TPB(isolation=Isolation.READ_COMMITTED,
                                        access_mode=TraAccessMode.WRITE,
-                                       lock_timeout=0,
-                                       # no_auto_undo=True,
-                                       auto_commit=True,
+                                       auto_commit=False,
                                        ignore_limbo=True).get_buffer())
 
         cursor = self.connection.cursor()
@@ -602,7 +609,6 @@ class FirebirdCursorWrapper(object):
     you'll need to use "%%s".
     """
     codes_for_integrityerror = (-803, -625, -530)
-    deadlock_error = -913
 
     def close(self, *args, **kwargs): # real signature unknown
         """ Closes the cursor. """
@@ -628,16 +634,6 @@ class FirebirdCursorWrapper(object):
             code = self.get_sql_code(e)
             if code in self.codes_for_integrityerror:
                 raise utils.IntegrityError(*self.error_info(e, query, params))
-            if code == self.deadlock_error:
-                self.cursor.close()
-
-                self.connection.begin(TPB(isolation=Isolation.READ_COMMITTED,
-                                          access_mode=TraAccessMode.WRITE,
-                                          lock_timeout=0,
-                                          # no_auto_undo=True,
-                                          auto_commit=True,
-                                          ignore_limbo=True).get_buffer())
-                return self.execute(query, params)
             raise
 
     def executemany(self, query, param_list):

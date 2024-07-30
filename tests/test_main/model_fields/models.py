@@ -1,22 +1,27 @@
 import json
-import os
 import tempfile
 import uuid
 
-from django.contrib.contenttypes.fields import (
-    GenericForeignKey, GenericRelation,
-)
+from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
 from django.contrib.contenttypes.models import ContentType
 from django.core.files.storage import FileSystemStorage
 from django.core.serializers.json import DjangoJSONEncoder
-from django.db import models
+from django.db import connection, models
+from django.db.models import F, Value
 from django.db.models.fields.files import ImageFieldFile
+from django.db.models.functions import Lower
+from django.utils.functional import SimpleLazyObject
 from django.utils.translation import gettext_lazy as _
 
 try:
     from PIL import Image
 except ImportError:
     Image = None
+
+
+test_collation = SimpleLazyObject(
+    lambda: connection.features.test_collations["virtual"]
+)
 
 
 class Foo(models.Model):
@@ -30,24 +35,22 @@ def get_foo():
 
 class Bar(models.Model):
     b = models.CharField(max_length=10)
-    a = models.ForeignKey(Foo, models.CASCADE, default=get_foo, related_name='bars')
+    a = models.ForeignKey(Foo, models.CASCADE, default=get_foo, related_name="bars")
 
 
 class Whiz(models.Model):
-    CHOICES = (
-        ('Group 1', (
-            (1, 'First'),
-            (2, 'Second'),
-        )
+    CHOICES = {
+        "Group 1": {
+            1: "First",
+            2: "Second",
+        },
+        "Group 2": (
+            (3, "Third"),
+            (4, "Fourth"),
         ),
-        ('Group 2', (
-            (3, 'Third'),
-            (4, 'Fourth'),
-        )
-        ),
-        (0, 'Other'),
-        (5, _('translated')),
-    )
+        0: "Other",
+        5: _("translated"),
+    }
     c = models.IntegerField(choices=CHOICES, null=True)
 
 
@@ -56,11 +59,11 @@ class WhizDelayed(models.Model):
 
 
 # Contrived way of adding choices later.
-WhizDelayed._meta.get_field('c').choices = Whiz.CHOICES
+WhizDelayed._meta.get_field("c").choices = Whiz.CHOICES
 
 
 class WhizIter(models.Model):
-    c = models.IntegerField(choices=iter(Whiz.CHOICES), null=True)
+    c = models.IntegerField(choices=iter(Whiz.CHOICES.items()), null=True)
 
 
 class WhizIterEmpty(models.Model):
@@ -68,15 +71,30 @@ class WhizIterEmpty(models.Model):
 
 
 class Choiceful(models.Model):
+    class Suit(models.IntegerChoices):
+        DIAMOND = 1, "Diamond"
+        SPADE = 2, "Spade"
+        HEART = 3, "Heart"
+        CLUB = 4, "Club"
+
+    def get_choices():
+        return [(i, str(i)) for i in range(3)]
+
     no_choices = models.IntegerField(null=True)
     empty_choices = models.IntegerField(choices=(), null=True)
-    with_choices = models.IntegerField(choices=[(1, 'A')], null=True)
+    with_choices = models.IntegerField(choices=[(1, "A")], null=True)
+    with_choices_dict = models.IntegerField(choices={1: "A"}, null=True)
+    with_choices_nested_dict = models.IntegerField(
+        choices={"Thing": {1: "A"}}, null=True
+    )
     empty_choices_bool = models.BooleanField(choices=())
     empty_choices_text = models.TextField(choices=())
+    choices_from_enum = models.IntegerField(choices=Suit)
+    choices_from_iterator = models.IntegerField(choices=((i, str(i)) for i in range(3)))
+    choices_from_callable = models.IntegerField(choices=get_choices)
 
 
 class BigD(models.Model):
-    # d = models.DecimalField(max_digits=3, decimal_places=30)
     d = models.DecimalField(max_digits=18, decimal_places=10)
 
 
@@ -136,12 +154,10 @@ class Post(models.Model):
 
 class NullBooleanModel(models.Model):
     nbfield = models.BooleanField(null=True, blank=True)
-    nbfield_old = models.NullBooleanField()
 
 
 class BooleanModel(models.Model):
     bfield = models.BooleanField()
-    string = models.CharField(max_length=10, default='abc')
 
 
 class DateTimeModel(models.Model):
@@ -164,17 +180,19 @@ class PrimaryKeyCharModel(models.Model):
 
 class FksToBooleans(models.Model):
     """Model with FKs to models with {Null,}BooleanField's, #15040"""
+
     bf = models.ForeignKey(BooleanModel, models.CASCADE)
     nbf = models.ForeignKey(NullBooleanModel, models.CASCADE)
 
 
 class FkToChar(models.Model):
     """Model with FK to a model with a CharField primary key, #19299"""
+
     out = models.ForeignKey(PrimaryKeyCharModel, models.CASCADE)
 
 
 class RenamedField(models.Model):
-    modelname = models.IntegerField(name="fieldname", choices=((1, 'One'),))
+    modelname = models.IntegerField(name="fieldname", choices=((1, "One"),))
 
 
 class VerboseNameField(models.Model):
@@ -193,25 +211,25 @@ class VerboseNameField(models.Model):
     # field_image = models.ImageField("verbose field")
     field11 = models.IntegerField("verbose field11")
     field12 = models.GenericIPAddressField("verbose field12", protocol="ipv4")
-    field13 = models.NullBooleanField("verbose field13")
-    field14 = models.PositiveIntegerField("verbose field14")
-    field15 = models.PositiveSmallIntegerField("verbose field15")
-    field16 = models.SlugField("verbose field16")
-    field17 = models.SmallIntegerField("verbose field17")
-    field18 = models.TextField("verbose field18")
-    field19 = models.TimeField("verbose field19")
-    field20 = models.URLField("verbose field20")
-    field21 = models.UUIDField("verbose field21")
-    field22 = models.DurationField("verbose field22")
+    field13 = models.PositiveIntegerField("verbose field13")
+    field14 = models.PositiveSmallIntegerField("verbose field14")
+    field15 = models.SlugField("verbose field15")
+    field16 = models.SmallIntegerField("verbose field16")
+    field17 = models.TextField("verbose field17")
+    field18 = models.TimeField("verbose field18")
+    field19 = models.URLField("verbose field19")
+    field20 = models.UUIDField("verbose field20")
+    field21 = models.DurationField("verbose field21")
 
 
 class GenericIPAddress(models.Model):
-    ip = models.GenericIPAddressField(null=True, protocol='ipv4')
+    ip = models.GenericIPAddressField(null=True, protocol="ipv4")
 
 
 ###############################################################################
 # These models aren't used in any test, just here to ensure they validate
 # successfully.
+
 
 # See ticket #16570.
 class DecimalLessThanOne(models.Model):
@@ -222,19 +240,21 @@ class DecimalLessThanOne(models.Model):
 class FieldClassAttributeModel(models.Model):
     field_class = models.CharField
 
+
 ###############################################################################
 
 
 class DataModel(models.Model):
-    short_data = models.BinaryField(max_length=10, default=b'\x08')
+    short_data = models.BinaryField(max_length=10, default=b"\x08")
     data = models.BinaryField()
+
 
 ###############################################################################
 # FileField
 
 
 class Document(models.Model):
-    myfile = models.FileField(upload_to='unused', unique=True)
+    myfile = models.FileField(upload_to="unused", unique=True)
 
 
 ###############################################################################
@@ -242,11 +262,13 @@ class Document(models.Model):
 
 # If Pillow available, do these tests.
 if Image:
+
     class TestImageFieldFile(ImageFieldFile):
         """
         Custom Field File class that records whether or not the underlying file
         was opened.
         """
+
         def __init__(self, *args, **kwargs):
             self.was_opened = False
             super().__init__(*args, **kwargs)
@@ -261,14 +283,14 @@ if Image:
     # Set up a temp directory for file storage.
     temp_storage_dir = tempfile.mkdtemp()
     temp_storage = FileSystemStorage(temp_storage_dir)
-    temp_upload_to_dir = os.path.join(temp_storage.location, 'tests')
 
     class Person(models.Model):
         """
         Model that defines an ImageField with no dimension fields.
         """
+
         name = models.CharField(max_length=50)
-        mugshot = TestImageField(storage=temp_storage, upload_to='tests')
+        mugshot = TestImageField(storage=temp_storage, upload_to="tests")
 
     class AbstractPersonWithHeight(models.Model):
         """
@@ -276,8 +298,10 @@ if Image:
         to make sure the dimension update is correctly run on concrete subclass
         instance post-initialization.
         """
-        mugshot = TestImageField(storage=temp_storage, upload_to='tests',
-                                 height_field='mugshot_height')
+
+        mugshot = TestImageField(
+            storage=temp_storage, upload_to="tests", height_field="mugshot_height"
+        )
         mugshot_height = models.PositiveSmallIntegerField()
 
         class Meta:
@@ -288,16 +312,21 @@ if Image:
         Concrete model that subclass an abstract one with only on dimension
         field.
         """
+
         name = models.CharField(max_length=50)
 
     class PersonWithHeightAndWidth(models.Model):
         """
         Model that defines height and width fields after the ImageField.
         """
+
         name = models.CharField(max_length=50)
-        mugshot = TestImageField(storage=temp_storage, upload_to='tests',
-                                 height_field='mugshot_height',
-                                 width_field='mugshot_width')
+        mugshot = TestImageField(
+            storage=temp_storage,
+            upload_to="tests",
+            height_field="mugshot_height",
+            width_field="mugshot_width",
+        )
         mugshot_height = models.PositiveSmallIntegerField()
         mugshot_width = models.PositiveSmallIntegerField()
 
@@ -305,12 +334,16 @@ if Image:
         """
         Model that defines height and width fields before the ImageField.
         """
+
         name = models.CharField(max_length=50)
         mugshot_height = models.PositiveSmallIntegerField()
         mugshot_width = models.PositiveSmallIntegerField()
-        mugshot = TestImageField(storage=temp_storage, upload_to='tests',
-                                 height_field='mugshot_height',
-                                 width_field='mugshot_width')
+        mugshot = TestImageField(
+            storage=temp_storage,
+            upload_to="tests",
+            height_field="mugshot_height",
+            width_field="mugshot_width",
+        )
 
     class PersonTwoImages(models.Model):
         """
@@ -319,20 +352,26 @@ if Image:
         * Defines the height/width fields before the ImageFields
         * Has a nullable ImageField
         """
+
         name = models.CharField(max_length=50)
         mugshot_height = models.PositiveSmallIntegerField()
         mugshot_width = models.PositiveSmallIntegerField()
-        mugshot = TestImageField(storage=temp_storage, upload_to='tests',
-                                 height_field='mugshot_height',
-                                 width_field='mugshot_width')
-        headshot_height = models.PositiveSmallIntegerField(
-            blank=True, null=True)
-        headshot_width = models.PositiveSmallIntegerField(
-            blank=True, null=True)
-        headshot = TestImageField(blank=True, null=True,
-                                  storage=temp_storage, upload_to='tests',
-                                  height_field='headshot_height',
-                                  width_field='headshot_width')
+        mugshot = TestImageField(
+            storage=temp_storage,
+            upload_to="tests",
+            height_field="mugshot_height",
+            width_field="mugshot_width",
+        )
+        headshot_height = models.PositiveSmallIntegerField(blank=True, null=True)
+        headshot_width = models.PositiveSmallIntegerField(blank=True, null=True)
+        headshot = TestImageField(
+            blank=True,
+            null=True,
+            storage=temp_storage,
+            upload_to="tests",
+            height_field="headshot_height",
+            width_field="headshot_width",
+        )
 
 
 class CustomJSONDecoder(json.JSONDecoder):
@@ -340,8 +379,8 @@ class CustomJSONDecoder(json.JSONDecoder):
         return super().__init__(object_hook=self.as_uuid, *args, **kwargs)
 
     def as_uuid(self, dct):
-        if 'uuid' in dct:
-            dct['uuid'] = uuid.UUID(dct['uuid'])
+        if "uuid" in dct:
+            dct["uuid"] = uuid.UUID(dct["uuid"])
         return dct
 
 
@@ -349,7 +388,7 @@ class JSONModel(models.Model):
     value = models.JSONField()
 
     class Meta:
-        required_db_features = {'supports_json_field'}
+        required_db_features = {"supports_json_field"}
 
 
 class NullableJSONModel(models.Model):
@@ -361,7 +400,7 @@ class NullableJSONModel(models.Model):
     )
 
     class Meta:
-        required_db_features = {'supports_json_field'}
+        required_db_features = {"supports_json_field"}
 
 
 class RelatedJSONModel(models.Model):
@@ -369,7 +408,7 @@ class RelatedJSONModel(models.Model):
     json_model = models.ForeignKey(NullableJSONModel, models.CASCADE)
 
     class Meta:
-        required_db_features = {'supports_json_field'}
+        required_db_features = {"supports_json_field"}
 
 
 class AllFieldsModel(models.Model):
@@ -386,7 +425,6 @@ class AllFieldsModel(models.Model):
     floatf = models.FloatField()
     integer = models.IntegerField()
     generic_ip = models.GenericIPAddressField()
-    null_boolean = models.NullBooleanField()
     positive_integer = models.PositiveIntegerField()
     positive_small_integer = models.PositiveSmallIntegerField()
     slug = models.SlugField()
@@ -397,19 +435,15 @@ class AllFieldsModel(models.Model):
     uuid = models.UUIDField()
 
     fo = models.ForeignObject(
-        'self',
+        "self",
         on_delete=models.CASCADE,
-        from_fields=['positive_integer'],
-        to_fields=['id'],
-        related_name='reverse'
+        from_fields=["positive_integer"],
+        to_fields=["id"],
+        related_name="reverse",
     )
-    fk = models.ForeignKey(
-        'self',
-        models.CASCADE,
-        related_name='reverse2'
-    )
-    m2m = models.ManyToManyField('self')
-    oto = models.OneToOneField('self', models.CASCADE)
+    fk = models.ForeignKey("self", models.CASCADE, related_name="reverse2")
+    m2m = models.ManyToManyField("self")
+    oto = models.OneToOneField("self", models.CASCADE)
 
     object_id = models.PositiveIntegerField()
     content_type = models.ForeignKey(ContentType, models.CASCADE)
@@ -418,7 +452,7 @@ class AllFieldsModel(models.Model):
 
 
 class ManyToMany(models.Model):
-    m2m = models.ManyToManyField('self')
+    m2m = models.ManyToManyField("self")
 
 
 ###############################################################################
@@ -437,7 +471,7 @@ class PrimaryKeyUUIDModel(models.Model):
 
 
 class RelatedToUUIDModel(models.Model):
-    uuid_fk = models.ForeignKey('PrimaryKeyUUIDModel', models.CASCADE)
+    uuid_fk = models.ForeignKey("PrimaryKeyUUIDModel", models.CASCADE)
 
 
 class UUIDChild(PrimaryKeyUUIDModel):
@@ -446,3 +480,191 @@ class UUIDChild(PrimaryKeyUUIDModel):
 
 class UUIDGrandchild(UUIDChild):
     pass
+
+
+class GeneratedModelFieldWithConverters(models.Model):
+    field = models.UUIDField()
+    field_copy = models.GeneratedField(
+        expression=F("field"),
+        output_field=models.UUIDField(),
+        db_persist=True,
+    )
+
+    class Meta:
+        required_db_features = {"supports_stored_generated_columns"}
+
+
+class GeneratedModel(models.Model):
+    a = models.IntegerField()
+    b = models.IntegerField()
+    field = models.GeneratedField(
+        expression=F("a") + F("b"),
+        output_field=models.IntegerField(),
+        db_persist=True,
+    )
+    fk = models.ForeignKey(Foo, on_delete=models.CASCADE, null=True, blank=True)
+
+    class Meta:
+        required_db_features = {"supports_stored_generated_columns"}
+
+
+class GeneratedModelVirtual(models.Model):
+    a = models.IntegerField()
+    b = models.IntegerField()
+    field = models.GeneratedField(
+        expression=F("a") + F("b"),
+        output_field=models.IntegerField(),
+        db_persist=False,
+    )
+    fk = models.ForeignKey(Foo, on_delete=models.CASCADE, null=True, blank=True)
+
+    class Meta:
+        required_db_features = {"supports_virtual_generated_columns"}
+
+
+class GeneratedModelParams(models.Model):
+    field = models.GeneratedField(
+        expression=Value("Constant", output_field=models.CharField(max_length=10)),
+        output_field=models.CharField(max_length=10),
+        db_persist=True,
+    )
+
+    class Meta:
+        required_db_features = {"supports_stored_generated_columns"}
+
+
+class GeneratedModelParamsVirtual(models.Model):
+    field = models.GeneratedField(
+        expression=Value("Constant", output_field=models.CharField(max_length=10)),
+        output_field=models.CharField(max_length=10),
+        db_persist=False,
+    )
+
+    class Meta:
+        required_db_features = {"supports_virtual_generated_columns"}
+
+
+class GeneratedModelOutputFieldDbCollation(models.Model):
+    name = models.CharField(max_length=10)
+    lower_name = models.GeneratedField(
+        expression=Lower("name"),
+        output_field=models.CharField(db_collation=test_collation, max_length=11),
+        db_persist=True,
+    )
+
+    class Meta:
+        required_db_features = {"supports_stored_generated_columns"}
+
+
+class GeneratedModelOutputFieldDbCollationVirtual(models.Model):
+    name = models.CharField(max_length=10)
+    lower_name = models.GeneratedField(
+        expression=Lower("name"),
+        db_persist=False,
+        output_field=models.CharField(db_collation=test_collation, max_length=11),
+    )
+
+    class Meta:
+        required_db_features = {"supports_virtual_generated_columns"}
+
+
+class GeneratedModelNull(models.Model):
+    name = models.CharField(max_length=10, null=True)
+    lower_name = models.GeneratedField(
+        expression=Lower("name"),
+        output_field=models.CharField(max_length=10),
+        db_persist=True,
+        null=True,
+    )
+
+    class Meta:
+        required_db_features = {"supports_stored_generated_columns"}
+
+
+class GeneratedModelNullVirtual(models.Model):
+    name = models.CharField(max_length=10, null=True)
+    lower_name = models.GeneratedField(
+        expression=Lower("name"),
+        output_field=models.CharField(max_length=10),
+        db_persist=False,
+        null=True,
+    )
+
+    class Meta:
+        required_db_features = {"supports_virtual_generated_columns"}
+
+
+class GeneratedModelBase(models.Model):
+    a = models.IntegerField()
+    a_squared = models.GeneratedField(
+        expression=F("a") * F("a"),
+        output_field=models.IntegerField(),
+        db_persist=True,
+    )
+
+    class Meta:
+        abstract = True
+
+
+class GeneratedModelVirtualBase(models.Model):
+    a = models.IntegerField()
+    a_squared = models.GeneratedField(
+        expression=F("a") * F("a"),
+        output_field=models.IntegerField(),
+        db_persist=False,
+    )
+
+    class Meta:
+        abstract = True
+
+
+class GeneratedModelCheckConstraint(GeneratedModelBase):
+    class Meta:
+        required_db_features = {
+            "supports_stored_generated_columns",
+            "supports_table_check_constraints",
+        }
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(a__gt=0),
+                name="Generated model check constraint a > 0",
+            )
+        ]
+
+
+class GeneratedModelCheckConstraintVirtual(GeneratedModelVirtualBase):
+    class Meta:
+        required_db_features = {
+            "supports_virtual_generated_columns",
+            "supports_table_check_constraints",
+        }
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(a__gt=0),
+                name="Generated model check constraint virtual a > 0",
+            )
+        ]
+
+
+class GeneratedModelUniqueConstraint(GeneratedModelBase):
+    class Meta:
+        required_db_features = {
+            "supports_stored_generated_columns",
+            "supports_expression_indexes",
+        }
+        constraints = [
+            models.UniqueConstraint(F("a"), name="Generated model unique constraint a"),
+        ]
+
+
+class GeneratedModelUniqueConstraintVirtual(GeneratedModelVirtualBase):
+    class Meta:
+        required_db_features = {
+            "supports_virtual_generated_columns",
+            "supports_expression_indexes",
+        }
+        constraints = [
+            models.UniqueConstraint(
+                F("a"), name="Generated model unique constraint virtual a"
+            ),
+        ]

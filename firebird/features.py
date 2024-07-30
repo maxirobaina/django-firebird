@@ -6,7 +6,7 @@ from django.db.backends.base.features import BaseDatabaseFeatures
 class DatabaseFeatures(BaseDatabaseFeatures):
     allows_group_by_pk = False  # if the backend can group by just by PK
     supports_forward_references = False
-    has_bulk_insert = False
+    has_bulk_insert = True
     can_return_columns_from_insert = True
     has_select_for_update = True
     has_select_for_update_nowait = False
@@ -60,8 +60,12 @@ class DatabaseFeatures(BaseDatabaseFeatures):
 
     supports_json_field = False
 
-    # Commit every statements, that other transactions see changes.
-    autocommits_when_autocommit_is_off = True
+    supports_ignore_conflicts = False
+
+    # Commit every statement, that other transactions see changes.
+    autocommit_when_autocommit_is_off = True
+
+    max_query_params = 255
 
     @cached_property
     def supports_transactions(self):

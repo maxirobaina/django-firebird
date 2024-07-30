@@ -9,7 +9,7 @@ from django.db.backends import utils
 from django.db.utils import DatabaseError
 from django.utils.functional import cached_property
 from django.utils import timezone
-from django.utils.encoding import force_bytes, force_text
+from django.utils.encoding import force_bytes, force_str
 from firebird.driver import CHARSET_MAP
 from firebird.driver.types import BPBItem, BlobType
 
@@ -17,7 +17,7 @@ from .base import Database
 
 
 class DatabaseOperations(BaseDatabaseOperations):
-    compiler_module = "django_reddatabase.compiler"
+    compiler_module = "django.db.backends.firebird.compiler"
 
     # Integer field safe ranges by `internal_type` as documented
     # in docs/ref/models/fields.txt.
@@ -31,6 +31,12 @@ class DatabaseOperations(BaseDatabaseOperations):
         'AutoField': (Database.core.INT_MIN, Database.core.INT_MAX), # since firebird 3 AutoField
         'BigAutoField': (Database.core.LONG_MIN, Database.core.LONG_MAX), # and BigAutoField are supported
         'SmallAutoField': (Database.core.SHRT_MIN, Database.core.SHRT_MAX), # and SmallAutoField are supported
+    }
+
+    cast_data_types = {
+        "AutoField": "integer",
+        "BigAutoField": "bigint",
+        "SmallAutoField": "smallint",
     }
 
     def __init__(self, connection, *args, **kwargs):
@@ -71,7 +77,7 @@ class DatabaseOperations(BaseDatabaseOperations):
         trigger_name = get_autoinc_trigger_name(self, table)
         table_name = self.quote_name(table)
         column_name = self.quote_name(column)
-        sequence_sql = 'CREATE SEQUENCE %s;' % sequence_name
+        sequence_sql = 'CREATE SEQUENCE %s' % sequence_name
         next_value_sql = 'NEXT VALUE FOR %s' % sequence_name
 
         trigger_sql = '\n'.join([
@@ -100,17 +106,16 @@ class DatabaseOperations(BaseDatabaseOperations):
         if isinstance(aggregate_func, Avg):
             aggregate_func.sql_template = '%(function)s(CAST(%(field)s as double precision))'
 
-    def date_extract_sql(self, lookup_type, field_name):
+    def date_extract_sql(self, lookup_type, sql, params):
         # Firebird uses WEEKDAY keyword.
         if lookup_type == 'week_day':
-            return "EXTRACT(WEEKDAY FROM %s) + 1" % field_name
-        return "EXTRACT(%s FROM %s)" % (lookup_type.upper(), field_name)
+            return f"EXTRACT(WEEKDAY FROM {sql}) + 1", params
+        return f"EXTRACT({lookup_type.upper()} FROM {sql})", params
 
-    def _convert_field_to_tz(self, field_name, tzname):
+    def _convert_sql_to_tz(self, sql, params, tzname):
         if not (self.connection.features.supports_timezones and settings.USE_TZ and tzname):
-            return field_name
-        field_name = "%s AT TIME ZONE '%s'" % (field_name, self._prepare_tzname_delta(tzname))
-        return field_name
+            return sql, params
+        return f"{sql} AT TIME ZONE '%s'" % self._prepare_tzname_delta(tzname), []
 
     def _prepare_tzname_delta(self, tzname):
         if '+' in tzname:
@@ -119,56 +124,53 @@ class DatabaseOperations(BaseDatabaseOperations):
             return tzname.replace('-', '+')
         return tzname
 
-    def date_trunc_sql(self, lookup_type, field_name, tzname=None):
-        field_name = self._convert_field_to_tz(field_name, tzname)
+    def date_trunc_sql(self, lookup_type, sql, params, tzname=None):
+        sql, params = self._convert_sql_to_tz(sql, params, tzname)
         if lookup_type == 'year':
-            sql = "EXTRACT(year FROM %s)||'-01-01'" % field_name
+            sql = f"EXTRACT(year FROM {sql})||'-01-01'"
         elif lookup_type == 'month':
-            sql = "EXTRACT(year FROM %s)||'-'||EXTRACT(month FROM %s)||'-01'" % (field_name, field_name)
+            sql = f"EXTRACT(year FROM {sql})||'-'||EXTRACT(month FROM {sql})||'-01'"
         elif lookup_type == 'week':
-            sql = "EXTRACT(year FROM %s)||'-'||EXTRACT(month FROM %s)||'-'||EXTRACT(day FROM DATEADD(1-EXTRACT(WEEKDAY FROM %s) DAY TO %s))" % (field_name, field_name, field_name, field_name)
+            sql = (f"EXTRACT(year FROM {sql})||'-'||EXTRACT(month FROM {sql})||'-'||EXTRACT(day FROM DATEADD(1-EXTRACT(WEEKDAY FROM {sql}) DAY TO {sql}))")
         elif lookup_type == 'day':
-            sql = "EXTRACT(year FROM %s)||'-'||EXTRACT(month FROM %s)||'-'||EXTRACT(day FROM %s)" % (field_name, field_name, field_name)
-        return "CAST(%s AS DATE)" % sql
+            sql = f"EXTRACT(year FROM {sql})||'-'||EXTRACT(month FROM {sql})||'-'||EXTRACT(day FROM {sql})"
+        return f"CAST({sql} AS DATE)", params
 
-    def datetime_cast_date_sql(self, field_name, tzname):
-        field_name = self._convert_field_to_tz(field_name, tzname)
-        sql = 'CAST(%s AS DATE)' % field_name
-        return sql
+    def datetime_cast_date_sql(self, sql, params, tzname):
+        sql, params = self._convert_sql_to_tz(sql, params, tzname)
+        return f'CAST({sql} AS DATE)', params
 
-    def datetime_cast_time_sql(self, field_name, tzname):
-        field_name = self._convert_field_to_tz(field_name, tzname)
-        sql = 'CAST(%s AS TIME)' % field_name
-        return sql
+    def datetime_cast_time_sql(self, sql, params, tzname):
+        sql, params = self._convert_sql_to_tz(sql, params, tzname)
+        return f'CAST({sql} AS TIME)', params
 
-    def datetime_extract_sql(self, lookup_type, field_name, tzname):
-        field_name = self._convert_field_to_tz(field_name, tzname)
+    def datetime_extract_sql(self, lookup_type, sql, params, tzname):
+        sql, params = self._convert_sql_to_tz(sql, params, tzname)
         """
         Given a lookup_type of 'year', 'month', 'day', 'hour', 'minute' or
         'second', returns the SQL that extracts a value from the given
         datetime field field_name, and a tuple of parameters.
         """
         if lookup_type == 'week_day':
-            sql = "EXTRACT(WEEKDAY FROM %s) + 1" % field_name
+            return f"EXTRACT(WEEKDAY FROM {sql}) + 1", params
         else:
-            sql = "EXTRACT(%s FROM %s)" % (lookup_type.upper(), field_name)
-        return sql
+            return f"EXTRACT({lookup_type} FROM {sql})", params
 
-    def datetime_trunc_sql(self, lookup_type, field_name, tzname):
-        field_name = self._convert_field_to_tz(field_name, tzname)
+    def datetime_trunc_sql(self, lookup_type, sql, params, tzname):
+        sql, params = self._convert_sql_to_tz(sql, params, tzname)
         """
         Given a lookup_type of 'year', 'month', 'day', 'hour', 'minute' or
         'second', returns the SQL that truncates the given datetime field
         field_name to a datetime object with only the given specificity, and
         a tuple of parameters.
         """
-        year = "EXTRACT(year FROM %s)" % field_name
-        month = "EXTRACT(month FROM %s)" % field_name
-        week = "EXTRACT(day FROM DATEADD(-(EXTRACT(WEEKDAY FROM %s))+1 DAY TO %s))" % (field_name, field_name)
-        day = "EXTRACT(day FROM %s)" % field_name
-        hh = "EXTRACT(hour FROM %s)" % field_name
-        mm = "EXTRACT(minute FROM %s)" % field_name
-        ss = "TRUNC(EXTRACT(second FROM %s))" % field_name
+        year = f"EXTRACT(year FROM {sql})"
+        month = f"EXTRACT(month FROM {sql})"
+        week = f"EXTRACT(DAY FROM DATEADD(-EXTRACT(WEEKDAY FROM {sql}) + 1 DAY TO {sql}))"
+        day = f"EXTRACT(day FROM {sql})"
+        hh = f"EXTRACT(hour FROM {sql})"
+        mm = f"EXTRACT(minute FROM {sql})"
+        ss = f"TRUNC(EXTRACT(second FROM {sql}))"
         if lookup_type == 'year':
             sql = "%s||'-01-01 00:00:00'" % year
         elif lookup_type == 'month':
@@ -184,10 +186,10 @@ class DatabaseOperations(BaseDatabaseOperations):
         elif lookup_type == 'second':
             sql = "%s||'-'||%s||'-'||%s||' '||%s||':'||%s||':'||%s" % (year, month, day, hh, mm, ss)
 
-        result = "CAST(%s AS TIMESTAMP)" % sql
-        return result
+        result = f"CAST({sql} AS TIMESTAMP)"
+        return result, params
 
-    def time_trunc_sql(self, lookup_type, field_name, tzname=None):
+    def time_trunc_sql(self, lookup_type, sql, params, tzname=None):
         """
         Given a lookup_type of 'hour', 'minute' or 'second', returns the SQL
         that truncates the given time field field_name to a time object with
@@ -197,11 +199,11 @@ class DatabaseOperations(BaseDatabaseOperations):
         includes millisecond as fraction, so we need to TRUNC for just
         get the seconds part.
         """
-        field_name = self._convert_field_to_tz(field_name, tzname)
+        sql, params = self._convert_sql_to_tz(sql, params, tzname)
 
-        hh = "EXTRACT(hour FROM %s)" % field_name
-        mm = "EXTRACT(minute FROM %s)" % field_name
-        ss = "TRUNC(EXTRACT(second FROM %s))" % field_name
+        hh = f"EXTRACT(hour FROM {sql})"
+        mm = f"EXTRACT(minute FROM {sql})"
+        ss = f"TRUNC(EXTRACT(second FROM {sql}))"
 
         fields = {
             'hour': "%s || ':00:00'" % hh,
@@ -209,7 +211,7 @@ class DatabaseOperations(BaseDatabaseOperations):
             'second': "%s || ':' || %s || ':' || %s" % (hh, mm, ss,)
         }
 
-        return "CAST(%s AS TIME)" % fields[lookup_type]
+        return "CAST(%s AS TIME)" % fields[lookup_type], params
 
     def lookup_cast(self, lookup_type, internal_type=None):
         if lookup_type in ('iexact', 'icontains', 'istartswith', 'iendswith'):
@@ -295,9 +297,9 @@ class DatabaseOperations(BaseDatabaseOperations):
                 if connection.get_connection_params()['charset'] in CHARSET_MAP:
                     db_charset = CHARSET_MAP[connection.get_connection_params()['charset']]
             if db_charset:
-                value = force_text(value, encoding=db_charset, errors='replace')
+                value = force_str(value, encoding=db_charset, errors='replace')
             else:
-                value = force_text(value)
+                value = force_str(value)
         return value
 
     def convert_binaryfield_value(self, value, expression, connection):
@@ -404,12 +406,12 @@ class DatabaseOperations(BaseDatabaseOperations):
         """Do nothing here, we will handle it in the custom function."""
         return sql
 
-    def year_lookup_bounds_for_datetime_field(self, value):
+    def year_lookup_bounds_for_datetime_field(self, value, iso_year=False):
         first = '%s-01-01 00:00:00' % value
         second = '%s-12-31 23:59:59.9999' % value
         return [first, second]
 
-    def year_lookup_bounds_for_date_field(self, value):
+    def year_lookup_bounds_for_date_field(self, value, iso_year=False):
         first = '%s-01-01' % value
         second = '%s-12-31' % value
         return [first, second]
@@ -448,7 +450,7 @@ class DatabaseOperations(BaseDatabaseOperations):
     def savepoint_create_sql(self, sid):
         return "SAVEPOINT " + self.quote_name(sid)
 
-    def savepoint_commint_sql(self, sid):
+    def savepoint_commit_sql(self, sid):
         return "RELEASE SAVEPOINT " + self.quote_name(sid)
 
     def savepoint_rollback_sql(self, sid):
@@ -587,6 +589,10 @@ class DatabaseOperations(BaseDatabaseOperations):
         if value is None:
             return None
 
+        # Expression values are adapted by the database.
+        if hasattr(value, "resolve_expression"):
+            return value
+
         # Firebird doesn't support tz-aware datetimes
         if timezone.is_aware(value):
             if settings.USE_TZ:
@@ -605,6 +611,10 @@ class DatabaseOperations(BaseDatabaseOperations):
         if value is None:
             return None
 
+        # Expression values are adapted by the database.
+        if hasattr(value, "resolve_expression"):
+            return value
+
         # Firebird doesn't support tz-aware times
         if timezone.is_aware(value):
             raise ValueError("Firebird backend does not support timezone-aware times.")
@@ -616,26 +626,47 @@ class DatabaseOperations(BaseDatabaseOperations):
             value = value[:13]
         return value
 
+    def bulk_insert_sql(self, fields, placeholder_rows):
+        qn = self.connection.ops.quote_name
+        query = []
+        for row in placeholder_rows:
+            select = []
+            for i, placeholder in enumerate(row):
+                field = fields[i]
+                model = field.model
+                meta = model._meta
+                table = meta.db_table
+                placeholder = 'CAST(%s AS TYPE OF COLUMN %s.%s)' % ('%s', qn(table), qn(field.column))
+                select.append(placeholder)
+            query.append('SELECT %s FROM RDB$DATABASE' % ', '.join(select))
+        return ' UNION ALL '.join(query)
 
-def create_object_name(ops, obj, sufix=''):
-    name_length = ops.max_name_length() - len(sufix)
+    def bulk_batch_size(self, fields, objs):
+        """Firebird restricts the number of parameters in a query."""
+        if fields:
+            return self.connection.features.max_query_params // len(fields)
+        return len(objs)
+
+
+def create_object_name(ops, obj, suffix=''):
+    name_length = ops.max_name_length() - len(suffix)
     obj_name = utils.strip_quotes(obj)
     return utils.truncate_name(obj_name, name_length)
 
 
 def get_autoinc_sequence_name(ops, table):
-    sufix = '_SQ'
-    table_name = create_object_name(ops, table, sufix)
-    return ops.quote_name('%s%s' % (table_name, sufix,))
+    suffix = '_SQ'
+    table_name = create_object_name(ops, table, suffix)
+    return ops.quote_name('%s%s' % (table_name, suffix,))
 
 
 def get_autoinc_trigger_name(ops, table):
-    sufix = '_PK'
-    table_name = create_object_name(ops, table, sufix)
-    return ops.quote_name('%s%s' % (table_name, sufix,))
+    suffix = '_PK'
+    table_name = create_object_name(ops, table, suffix)
+    return ops.quote_name('%s%s' % (table_name, suffix,))
 
 
 def get_reset_procedure_name(ops, table):
-    sufix = '_RS'
-    table_name = create_object_name(ops, table, sufix)
-    return ops.quote_name('%s%s' % (table_name, sufix,))
+    suffix = '_RS'
+    table_name = create_object_name(ops, table, suffix)
+    return ops.quote_name('%s%s' % (table_name, suffix,))

@@ -23,6 +23,25 @@ class SQLCompiler(compiler.SQLCompiler):
     def as_sql(self, with_limits=True, with_col_aliases=False):
         sql, params = super(SQLCompiler, self).as_sql(with_limits=False, with_col_aliases=with_col_aliases)
 
+        combinator = self.query.combinator
+        extra_select, order_by, group_by = self.pre_sql_setup(
+            with_col_aliases=with_col_aliases or bool(combinator),
+        )
+        idx = 1
+        sub_str = '%s'
+        for value, (s_sql, s_params), alias in self.select + extra_select:
+            from django.db.models import Value
+            if s_sql == sub_str and isinstance(value, Value):
+                cast_length = len(''.join([str(item) for item in s_params]))
+                sql = self.nth_repl(sql, sub_str, 'CAST(%s AS VARCHAR(%s))' % ('%s', cast_length), idx)
+            idx += 1
+            if alias:
+                s_sql = "%s AS %s" % (
+                    s_sql,
+                    self.connection.ops.quote_name(alias),
+                )
+                a = s_sql
+
         if with_limits:
             limits = []
             if self.query.high_mark is not None:
@@ -35,6 +54,20 @@ class SQLCompiler(compiler.SQLCompiler):
                 limits.append('SKIP %d' % self.query.low_mark)
             sql = 'SELECT %s %s' % (' '.join(limits), sql[6:].strip())
         return sql, params
+
+    def nth_repl(self, s, old, new, n):
+        find = s.find(old)
+        # If find is not -1 we have found at least one match for the substring
+        idx = find != -1
+        # loop until we find the nth, or we find no match
+        while find != -1 and idx != n:
+            # find + 1 means we start searching from after the last match
+            find = s.find(old, find + 1)
+            idx += 1
+        # If idx is equal to n we found nth match so replace
+        if idx == n and idx <= len(s.split(old)) - 1:
+            return s[:find] + new + s[find + len(old):]
+        return s
 
 
 class SQLInsertCompiler(compiler.SQLInsertCompiler, SQLCompiler):
