@@ -9,7 +9,7 @@ except ImportError as e:
 
     raise ImproperlyConfigured("Error loading firebird driver: %s" % e)
 
-from firebird.driver import CHARSET_MAP
+from firebird.driver import CHARSET_MAP, tpb, TPB, Isolation, TraAccessMode, TableShareMode, TableAccessMode
 
 from django.db import utils
 from django.db.backends.base.base import BaseDatabaseWrapper
@@ -34,6 +34,7 @@ OperationalError = Database.OperationalError
 
 class DatabaseWrapper(BaseDatabaseWrapper):
     vendor = 'firebird'
+    display_name = "Firebird"
 
     # This dictionary maps Field objects to their associated Firebird column
     # types, as strings. Column-type strings can contain format strings; they'll
@@ -63,6 +64,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         'GenericIPAddressField': 'char(39)',
         'NullBooleanField': 'smallint',  # for firebird 3 it changes in init_connection_state
         'OneToOneField': 'integer',
+        'PositiveBigIntegerField': 'bigint',
         'PositiveIntegerField': 'integer',
         'PositiveSmallIntegerField': 'smallint',
         'SlugField': 'varchar(%(max_length)s)',
@@ -115,10 +117,11 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         'iendswith': "LIKE '%%' || UPPER({})",
     }
 
-    def Binary(b):
-        return b
+    @staticmethod
+    def binary(value):
+        return bytes(value)
 
-    Database.Binary = Binary
+    Database.Binary = staticmethod(binary)
 
     Database = Database
     SchemaEditorClass = DatabaseSchemaEditor
@@ -129,6 +132,8 @@ class DatabaseWrapper(BaseDatabaseWrapper):
     features_class = DatabaseFeatures
     introspection_class = DatabaseIntrospection
     ops_class = DatabaseOperations
+
+    connections = []
 
     def __init__(self, *args, **kwargs):
         super(DatabaseWrapper, self).__init__(*args, **kwargs)
@@ -172,6 +177,8 @@ class DatabaseWrapper(BaseDatabaseWrapper):
             conn_params['password'] = settings_dict['PASSWORD']
         if 'ROLE' in settings_dict:
             conn_params['role'] = settings_dict['ROLE']
+        if 'TIME_ZONE' in settings_dict:
+            conn_params['session_time_zone'] = settings_dict['TIME_ZONE']
         options = settings_dict['OPTIONS'].copy()
         conn_params.update(options)
 
@@ -183,7 +190,12 @@ class DatabaseWrapper(BaseDatabaseWrapper):
     @async_unsafe
     def get_new_connection(self, conn_params):
         """Opens a connection to the database."""
-        return Database.connect(**conn_params)
+        connection = Database.connect(**conn_params)
+        self.connections.append(connection)
+        for cc in self.connections:
+            if cc.is_closed():
+                self.connections.remove(cc)
+        return connection
 
     def init_connection_state(self):
         """Initializes the database connection settings."""
@@ -194,14 +206,31 @@ class DatabaseWrapper(BaseDatabaseWrapper):
             self.data_type_check_constraints[
                 'NullBooleanField'] = '(%(qn_column)s IN (False,True)) OR (%(qn_column)s IS NULL)'
         if int(self.ops.firebird_version[3]) >= 4:
+            self.features.supports_over_clause = True
+            self.features.supports_partial_indexes = True
             self.features.supports_timezones = True
+            self.data_types['DateTimeField'] = 'timestamp with time zone'
+            self.data_types['TimeField'] = 'time with time zone'
+
+    @async_unsafe
+    def close(self):
+        for cc in self.connections:
+            if cc.is_closed():
+                self.connections.remove(cc)
+        BaseDatabaseWrapper.close(self)
 
     def create_cursor(self, name=None):
         """Creates a cursor. Assumes that a connection is established."""
         if self.connection.is_closed():
             raise InterfaceError("Cannot create cursor for closed connection")
+        if self.get_autocommit():
+            self.connection.begin(TPB(isolation=Isolation.READ_COMMITTED,
+                                       access_mode=TraAccessMode.WRITE,
+                                       auto_commit=False,
+                                       ignore_limbo=True).get_buffer())
+
         cursor = self.connection.cursor()
-        return FirebirdCursorWrapper(cursor, self.encoding)
+        return FirebirdCursorWrapper(cursor, self.encoding, self.get_autocommit())
 
     def _commit(self):
         if self.connection is not None:
@@ -513,6 +542,10 @@ class DatabaseWrapper(BaseDatabaseWrapper):
                 value.append(map)
         return value
 
+    def _savepoint_allowed(self):
+        # Savepoints cannot be created outside a transaction
+        return self.features.uses_savepoints and not self.get_autocommit()
+
     # #### Backend-specific transaction management methods #####
 
     def _set_autocommit(self, autocommit):
@@ -527,6 +560,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
 
         Pay attention at _close() method below
         """
+        self.autocommit = autocommit
         with self.wrap_database_errors:
             self.connection.autocommit = autocommit
 
@@ -576,9 +610,14 @@ class FirebirdCursorWrapper(object):
     """
     codes_for_integrityerror = (-803, -625, -530)
 
-    def __init__(self, cursor, encoding):
+    def close(self, *args, **kwargs): # real signature unknown
+        """ Closes the cursor. """
+        self.cursor.close()
+
+    def __init__(self, cursor, encoding, autocommit):
         self.cursor = cursor
         self.encoding = encoding
+        self.autocommit = autocommit
 
     def execute(self, query, params=None):
         if params is None:

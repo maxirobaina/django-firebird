@@ -139,9 +139,9 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
                             break
                 self.execute(self._delete_constraint_sql(self.sql_delete_index, model, result))
         # Created uniques
-        for fields in news.difference(olds):
-            columns = [model._meta.get_field(field).column for field in fields]
-            create_statement = self._create_unique_sql(model, columns)
+        for field_names in news.difference(olds):
+            fields = [model._meta.get_field(field) for field in field_names]
+            create_statement = self._create_unique_sql(model, fields)
             self.create_unique(create_statement)
 
     def create_unique(self, create_statement):
@@ -186,6 +186,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         # to an altered field.
         def is_self_referential(f):
             return f.is_relation and f.remote_field.model is model
+
         # Work out the new fields dict / mapping
         body = {
             f.name: f.clone() if is_self_referential(f) else f
@@ -357,7 +358,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
 
         super(DatabaseSchemaEditor, self).remove_field(model, field)
 
-    def _alter_column_type_sql(self, table, old_field, new_field, new_type):
+    def _alter_column_type_sql(self, model, old_field, new_field, new_type, old_collation, new_collation):
         # The Firebird does not support direct type change to BLOB,
         # therefore this action is divided into 4 stages.
         # Change through temp column.
@@ -365,27 +366,27 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         if new_type == self.connection.data_types['TextField'] or new_type == self.connection.data_types['BinaryField']:
             alter_blob_actions.append(
                 (self.sql_create_column % {
-                    "table": self.quote_name(table),
+                    "table": self.quote_name(model._meta.db_table),
                     "column": self.quote_name("mirgate_temp_" + new_field.column),
                     "definition": new_type,
                 }, [])
             )
             alter_blob_actions.append(
                 (self.sql_update_with_default % {
-                    "table": self.quote_name(table),
+                    "table": self.quote_name(model._meta.db_table),
                     "column": self.quote_name("mirgate_temp_" + new_field.column),
                     "default": self.quote_name(old_field.column),
                 }, [])
             )
             alter_blob_actions.append(
                 (self.sql_delete_column % {
-                    "table": self.quote_name(table),
+                    "table": self.quote_name(model._meta.db_table),
                     "column": self.quote_name(old_field.column),
                 }, [])
             )
             alter_blob_actions.append(
                 (self.sql_rename_column % {
-                    "table": self.quote_name(table),
+                    "table": self.quote_name(model._meta.db_table),
                     "old_column": self.quote_name("mirgate_temp_" + new_field.column),
                     "new_column": self.quote_name(new_field.column),
                 }, [])
@@ -404,7 +405,8 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             unq_names = self._constraint_names(old_field.model, [old_field.column], unique=True)
             for name in unq_names:
                 self.execute(self._delete_constraint_sql(self.sql_delete_unique, model, name))
-                params = {"table": table, "name": name, "columns": self.quote_name(column), "deferrable": ''}
+                params = {"table": model._meta.db_table, "name": name, "columns": self.quote_name(column),
+                          "nulls_distinct": '', "deferrable": ''}
                 extra_sql.append((self.sql_create_unique % params, [],))
 
             if new_type != self.connection.data_types['TextField'] or new_type == self.connection.data_types[
@@ -415,32 +417,32 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
                 return ((alter_sql, [],), extra_sql,)
         if new_type != self.connection.data_types['TextField'] and new_type != self.connection.data_types[
             'BinaryField']:
-            return super(DatabaseSchemaEditor, self)._alter_column_type_sql(table, old_field, new_field, new_type)
+            return super(DatabaseSchemaEditor, self)._alter_column_type_sql(model, old_field, new_field, new_type,
+                                                                            old_collation, new_collation)
         else:
             return ((alter_blob_actions), [],)
 
-    def _alter_column_blob_type_sql(self, table, old_field, new_field, new_type):
+    def _alter_column_blob_type_sql(self, model, old_field, new_field, new_type):
         # The Firebird does not support direct type change from BLOB,
         # therefore this action is divided into 4 stages.
         # Change through temp column.
         alter_blob_actions = [(self.sql_create_column % {
-            "table": self.quote_name(table),
+            "table": self.quote_name(model._meta.db_table),
             "column": self.quote_name("mirgate_temp_" + new_field.column),
             "definition": new_type,
         }, []), (self.sql_update_with_default % {
-            "table": self.quote_name(table),
+            "table": self.quote_name(model._meta.db_table),
             "column": self.quote_name("mirgate_temp_" + new_field.column),
             "default": self.quote_name(old_field.column),
         }, []), (self.sql_delete_column % {
-            "table": self.quote_name(table),
+            "table": self.quote_name(model._meta.db_table),
             "column": self.quote_name(old_field.column),
         }, []), (self.sql_rename_column % {
-            "table": self.quote_name(table),
+            "table": self.quote_name(model._meta.db_table),
             "old_column": self.quote_name("mirgate_temp_" + new_field.column),
             "new_column": self.quote_name(new_field.column),
         }, [])]
         return alter_blob_actions, [],
-
 
     def _alter_field(self, model, old_field, new_field, old_type, new_type,
                      old_db_params, new_db_params, strict=False):
@@ -473,6 +475,8 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
                 self.execute(self._delete_constraint_sql(self.sql_delete_unique, model, constraint_name))
         # Drop incoming FK constraints if the field is a primary key or unique,
         # which might be a to_field target, and things are going to change.
+        old_collation = old_db_params.get("collation")
+        new_collation = new_db_params.get("collation")
         drop_foreign_keys = (
                 (
                         (old_field.primary_key and new_field.primary_key) or
@@ -535,7 +539,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             self.execute(self._rename_field_sql(model._meta.db_table, old_field, new_field, new_type))
             # Restore the unique constraint for this field
             for constraint_name in constraint_names:
-                self.create_unique(self._create_unique_sql(model, [new_field.column], name=constraint_name))
+                self.create_unique(self._create_unique_sql(model, [new_field], name=constraint_name))
             # Restore the unique together constraints for this field
             self._create_unique_together(model, unique_together_constraints)
         # Next, start accumulating actions to do
@@ -549,13 +553,13 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             unique_together_constraints = self._get_unique_together_constraints(model, new_field, old_field)
             self._delete_unique_together_constraints(model, unique_together_constraints)
             fragment, other_actions = self._alter_column_type_sql(
-                model._meta.db_table, old_field, new_field, new_type
+                model, old_field, new_field, new_type, old_collation, new_collation
             )
             # If old type is blob, then we have to make new field in 4 steps
             if old_type == self.connection.data_types['TextField'] \
                     or old_type == self.connection.data_types['BinaryField']:
                 fragment, other_actions = self._alter_column_blob_type_sql(
-                    model._meta.db_table, old_field, new_field, new_type
+                    model, old_field, new_field, new_type
                 )
 
             # If new type is blob or old type was blob, then fragment contains 4 action
@@ -673,10 +677,10 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         if old_field.primary_key and not new_field.primary_key:
             self._delete_primary_key(model, strict)
         # Added a unique?
-        if (not old_field.unique and new_field.unique and not new_field.primary_key ) or (
+        if (not old_field.unique and new_field.unique and not new_field.primary_key) or (
                 old_field.primary_key and not new_field.primary_key and new_field.unique
         ):
-            self.create_unique(self._create_unique_sql(model, [new_field.column]))
+            self.create_unique(self._create_unique_sql(model, [new_field]))
         # Added an index? Add an index if db_index switched to True or a unique
         # constraint will no longer be used in lieu of an index. The following
         # lines from the truth table show all True cases; the rest are False:
@@ -710,7 +714,8 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             rel_db_params = new_rel.field.db_parameters(connection=self.connection)
             rel_type = rel_db_params['type']
             fragment, other_actions = self._alter_column_type_sql(
-                new_rel.related_model._meta.db_table, old_rel.field, new_rel.field, rel_type
+                new_rel.related_model, old_rel.field, new_rel.field, rel_type, old_collation,
+                new_collation
             )
             self.execute(
                 self.sql_alter_column % {
@@ -785,13 +790,13 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             if new_field.name in unique_fields:
                 for field in unique_fields:
                     if field == new_field.name:
-                        old_fields.append(old_field.column)
-                        new_fields.append(new_field.column)
+                        old_fields.append(old_field)
+                        new_fields.append(new_field)
                     else:
                         for model_field in model._meta.fields:
                             if field == model_field.name:
-                                old_fields.append(model_field.column)
-                                new_fields.append(model_field.column)
+                                old_fields.append(model_field)
+                                new_fields.append(model_field)
                 unique_constraints.append([new_fields, self._constraint_names(model, old_fields, unique=True)])
         return unique_constraints
 
@@ -871,7 +876,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         Create a table and any accompanying indexes or unique constraints for
         the given `model`.
         """
-        # Create column SQL, add FK deferreds if needed
+        # Create column SQL, add FK deferred if needed
         column_sqls = []
         params = []
         for field in model._meta.local_fields:
@@ -908,7 +913,8 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             ))
             # Autoincrement SQL (for backends with post table definition variant)
             if (field.get_internal_type() in ("AutoField", "BigAutoField", "SmallAutoField")) \
-                    or (field.primary_key and (field.get_internal_type() in ("SmallIntegerField", "IntegerField", "BigIntegerField"))):
+                    or (field.primary_key and (
+                    field.get_internal_type() in ("SmallIntegerField", "IntegerField", "BigIntegerField"))):
                 autoinc_sql = self.connection.ops.autoinc_sql(model._meta.db_table, field.column)
                 if autoinc_sql:
                     self.deferred_sql.extend(autoinc_sql)
@@ -928,8 +934,8 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
 
         # Add any unique_togethers (always deferred, as some fields might be
         # created afterwards, like geometry fields with some backends)
-        for fields in model._meta.unique_together:
-            columns = [model._meta.get_field(field).column for field in fields]
+        for field_names in model._meta.unique_together:
+            columns = [model._meta.get_field(field) for field in field_names]
             # self.deferred_sql.append(self._create_unique_sql(model, columns))
             self.create_unique(self._create_unique_sql(model, columns))
 
@@ -982,7 +988,10 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             self.execute(statement, params=[])
 
     def delete_model(self, model):
-        super(DatabaseSchemaEditor, self).delete_model(model)
+        if self.connection.table_exists(model._meta.db_table):
+            super(DatabaseSchemaEditor, self).delete_model(model)
+        else:
+            logger.info("Deleting a non-existent table: %s" % model._meta.db_table)
 
         # Also, drop sequence if exists
         table_name = model._meta.db_table
@@ -1026,12 +1035,12 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             follow statements can see changes previous ones.
 
         Note:
-           This requires that `DatabaseFeatures.autocommits_when_autocommit_is_off` feature is True
+           This requires that `DatabaseFeatures.autocommit_when_autocommit_is_off` feature is True
         """
         # print("schema:", sql)
 
         logger.debug("%s; (params %r)", sql, params, extra={'params': params, 'sql': sql})
-        if self.connection.features.autocommits_when_autocommit_is_off:
+        if self.connection.features.autocommit_when_autocommit_is_off:
             for tr in self.connection.connection.transactions:
                 if tr.is_active():
                     tr.commit()

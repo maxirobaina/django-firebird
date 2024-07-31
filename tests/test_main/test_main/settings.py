@@ -1,4 +1,4 @@
-# Django settings for test_main project.
+# Django's settings for test_main project.
 
 DEBUG = True
 TEMPLATE_DEBUG = DEBUG
@@ -7,7 +7,7 @@ DB_HOST = '127.0.0.1'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.firebird',
+        'ENGINE': 'firebird',
         'NAME': 'django-test-default',
         'USER': 'SYSDBA',
         'PASSWORD': 'masterkey',
@@ -23,7 +23,7 @@ DATABASES = {
         }
     },
     'other': {
-        'ENGINE': 'django.db.backends.firebird',
+        'ENGINE': 'firebird',
         'NAME': 'fb_other.fdb',
         'USER': 'SYSDBA',
         'PASSWORD': 'masterkey',
@@ -161,31 +161,22 @@ INSTALLED_APPS = (
 # more details on how to customize your logging configuration.
 LOGGING = {
     'version': 1,
-    'disable_existing_loggers': False,
     'filters': {
-        'require_debug_false': {
-            '()': 'django.utils.log.RequireDebugFalse'
+        'require_debug_true': {
+            '()': 'django.utils.log.RequireDebugTrue',
         }
     },
     'handlers': {
-        'mail_admins': {
-            'level': 'ERROR',
-            'filters': ['require_debug_false'],
-            'class': 'django.utils.log.AdminEmailHandler'
-        },
         'console': {
-            'class': 'logging.StreamHandler'
-        },
+            'level': 'DEBUG',
+            'filters': ['require_debug_true'],
+            'class': 'logging.StreamHandler',
+        }
     },
     'loggers': {
-        'django.request': {
-            'handlers': ['mail_admins'],
-            'level': 'ERROR',
-            'propagate': True,
-        },
         'django.db.backends': {
-            'level': "INFO",
-            'handlers': ['console']
+            'level': 'DEBUG',
+            'handlers': ['console'],
         }
     }
 }
