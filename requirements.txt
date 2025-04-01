@@ -1,6 +1,6 @@
 asgiref==3.8.1
 attrs==23.2.0
-Django==5.0.8
+Django==5.0.10
 firebird-driver==1.10.4
 future==1.0.0
 importlib-metadata==1.5.0
