@@ -96,15 +96,21 @@ class DatabaseOperations(BaseDatabaseOperations):
 
         return sequence_sql, trigger_sql
 
-    def check_aggregate_support(self, aggregate_func):
+    def check_expression_support(self, expression):
         from django.db.models.aggregates import Avg
+        if (isinstance(expression, Avg)):
 
-        INVALID = ('STDDEV_SAMP', 'STDDEV_POP', 'VAR_SAMP', 'VAR_POP')
-        if aggregate_func.sql_function in INVALID:
-            raise NotImplementedError
+            INVALID = ('STDDEV_SAMP', 'STDDEV_POP', 'VAR_SAMP', 'VAR_POP')
+            if expression.function in INVALID:
+                raise NotImplementedError
 
-        if isinstance(aggregate_func, Avg):
-            aggregate_func.sql_template = '%(function)s(CAST(%(field)s as double precision))'
+            if isinstance(expression, Avg):
+                expression.template = '%(function)s(CAST(%(field)s as double precision))'
+
+            return
+        else: 
+            super().check_expression_support(expression)
+            return
 
     def date_extract_sql(self, lookup_type, sql, params):
         # Firebird uses WEEKDAY keyword.
