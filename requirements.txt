@@ -13,7 +13,7 @@ pyparsing==2.4.6
 pytest==8.2.2
 pytz==2024.1
 sphinx-bootstrap-theme==0.8.1
-sqlparse==0.5.1
+sqlparse==0.5.4
 testcase==0.1.0
 toolz==0.10.0
 wcwidth==0.2.13
