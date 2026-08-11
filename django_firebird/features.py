@@ -73,6 +73,9 @@ class DatabaseFeatures(BaseDatabaseFeatures):
     supports_collation_on_charfield = True
     supports_collation_on_textfield = False
 
+    # Blob columns cannot be indexed directly.
+    supports_index_on_text_field = False
+
     @cached_property
     def supports_high_precision_decimals(self):
         # NUMERIC/DECIMAL precision above 18 digits requires Firebird 4+;

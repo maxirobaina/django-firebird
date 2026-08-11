@@ -82,11 +82,7 @@ jobs:
             test_base model_fields many_to_one transactions introspection \
             inspectdb datatypes dates datetimes lookup expressions
 
-      # The schema app is still being hardened for Firebird < 6 (FK
-      # bookkeeping during alters, blob indexing, table comments); its result
-      # is informational until that work lands.
-      - name: Run schema app tests (informational)
+      - name: Run schema app tests
         working-directory: tests/test_main
         timeout-minutes: 25
-        continue-on-error: true
         run: python manage.py test --noinput schema

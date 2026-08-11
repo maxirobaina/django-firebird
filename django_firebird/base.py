@@ -216,8 +216,10 @@ class DatabaseWrapper(BaseDatabaseWrapper):
             )
         if self.ops.firebird_main_version >= 4:
             self.features.supports_over_clause = True
-            self.features.supports_partial_indexes = True
             self.features.supports_timezones = True
+        if self.ops.firebird_main_version >= 5:
+            # Partial indices were introduced in Firebird 5.
+            self.features.supports_partial_indexes = True
             if settings.USE_TZ:
                 # Only store time zones when Django uses aware datetimes;
                 # WITH TIME ZONE columns return aware values, which must not

@@ -4,6 +4,8 @@ import datetime
 import re
 
 from django.apps.registry import Apps
+from django.conf import settings
+from django.db.backends.utils import split_identifier
 from django.db.backends.ddl_references import Statement, Table, IndexName, IndexColumns, TableColumns, Expressions
 from django.db.models.sql import Query
 from django.utils.encoding import force_str
@@ -40,9 +42,11 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
     sql_delete_column = "ALTER TABLE %(table)s DROP %(column)s"
     sql_rename_column = "ALTER TABLE %(table)s ALTER %(old_column)s TO %(new_column)s"
     sql_create_fk = "ALTER TABLE %(table)s ADD CONSTRAINT %(name)s FOREIGN KEY (%(column)s) REFERENCES %(to_table)s (%(to_column)s)"
+    # Columns added with ALTER TABLE ADD can carry their FK inline.
+    sql_create_column_inline_fk = "CONSTRAINT %(name)s REFERENCES %(to_table)s (%(to_column)s)%(deferrable)s"
 
-    sql_create_index = "CREATE INDEX %(name)s ON %(table)s (%(columns)s)%(include)s%(extra)s"
-    sql_create_unique_index = "CREATE UNIQUE INDEX %(name)s ON %(table)s (%(columns)s)%(include)s"
+    sql_create_index = "CREATE INDEX %(name)s ON %(table)s (%(columns)s)%(include)s%(extra)s%(condition)s"
+    sql_create_unique_index = "CREATE UNIQUE INDEX %(name)s ON %(table)s (%(columns)s)%(include)s%(condition)s"
 
     # Important!!!
     # If an index is created or a unique on a large VARCHAR field, the expression with hash function is used
@@ -63,6 +67,29 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             if match:
                 sql = sql[:match.start()] + sql[match.end():] + ' COLLATE %s' % match.group(1)
         return sql, params
+
+    def _get_incoming_fks(self, table_name):
+        """
+        Return (constraint, referencing_table, referencing_column,
+        referenced_column) for every foreign key in *other* tables that
+        references `table_name`.
+        """
+        sql = """
+            select trim(rc.rdb$constraint_name),
+                   trim(rc.rdb$relation_name),
+                   (select trim(s.rdb$field_name) from rdb$index_segments s
+                        where s.rdb$index_name = rc.rdb$index_name),
+                   (select trim(s2.rdb$field_name) from rdb$index_segments s2
+                        where s2.rdb$index_name = uq.rdb$index_name)
+            from rdb$relation_constraints rc
+            join rdb$ref_constraints refc on rc.rdb$constraint_name = refc.rdb$constraint_name
+            join rdb$relation_constraints uq on uq.rdb$constraint_name = refc.rdb$const_name_uq
+            where uq.rdb$relation_name = '%s'
+            and rc.rdb$relation_name <> uq.rdb$relation_name
+        """ % table_name.upper()
+        with self.connection.cursor() as cursor:
+            cursor.execute(sql)
+            return [tuple(row) for row in cursor.fetchall()]
 
     def _collate_sql(self, collation, old_collation=None, table_name=None):
         if collation == old_collation:
@@ -137,6 +164,8 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         Note:
            If there is an error when create index, we try to create index with hash.
         """
+        if index.contains_expressions and not self.connection.features.supports_expression_indexes:
+            return None
         create_statement = None
         try:
             create_statement = index.create_sql(model, self)
@@ -295,8 +324,22 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
                 ', '.join(mapping.values()),
                 self.quote_name(model._meta.db_table),
             ))
+            # Foreign keys in other tables that reference the old table must
+            # be dropped before it can go, and recreated against the new one.
+            incoming_fks = self._get_incoming_fks(model._meta.db_table)
+            for constraint, ref_table, ref_column, target_column in incoming_fks:
+                self.execute('ALTER TABLE %s DROP CONSTRAINT %s' % (
+                    self.quote_name(ref_table), self.quote_name(constraint)))
             # Delete the old table to make way for the new
             self.delete_model(model)
+            for constraint, ref_table, ref_column, target_column in incoming_fks:
+                self.execute(self.sql_create_fk % {
+                    'table': self.quote_name(ref_table),
+                    'name': self.quote_name(constraint),
+                    'column': self.quote_name(ref_column),
+                    'to_table': self.quote_name(new_model._meta.db_table),
+                    'to_column': self.quote_name(target_column),
+                })
 
         # Run deferred SQL on correct table
         for sql in self.deferred_sql:
@@ -321,6 +364,23 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         db_params = field.db_parameters(connection=self.connection)
         if db_params['check']:
             definition += " CHECK (%s)" % db_params['check']
+        # Foreign key constraints go inline, in the same statement.
+        inline_fk = (field.remote_field and
+                     self.connection.features.supports_foreign_keys and
+                     field.db_constraint)
+        if inline_fk:
+            to_table = field.remote_field.model._meta.db_table
+            to_column = field.remote_field.model._meta.get_field(
+                field.remote_field.field_name).column
+            namespace, _ = split_identifier(model._meta.db_table)
+            definition += ' ' + self.sql_create_column_inline_fk % {
+                'name': self._fk_constraint_name(model, field, "_fk_%(to_table)s_%(to_column)s"),
+                'namespace': '%s.' % self.quote_name(namespace) if namespace else '',
+                'column': self.quote_name(field.column),
+                'to_table': self.quote_name(to_table),
+                'to_column': self.quote_name(to_column),
+                'deferrable': self.connection.ops.deferrable_sql(),
+            }
         # Build the SQL and run it
         sql = self.sql_create_column % {
             "table": self.quote_name(model._meta.db_table),
@@ -343,9 +403,6 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
                 self.execute(sql)
         # Add an index, if required
         self.deferred_sql.extend(self._field_indexes_sql(model, field))
-        # Add any FK constraints later
-        if field.remote_field and self.connection.features.supports_foreign_keys and field.db_constraint:
-            self.deferred_sql.append(self._create_fk_sql(model, field, "_fk_%(to_table)s_%(to_column)s"))
         # Reset connection if required
         if self.connection.features.connection_persists_old_columns:
             self.connection.commit()
@@ -357,6 +414,9 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         # db_constraint=False because the index from that constraint won't be
         # created.
         if (create_index and field.get_internal_type() == 'ForeignKey' and field.db_constraint):
+            return False
+        # Firebird cannot index blob columns directly.
+        if create_index and field.get_internal_type() in ('TextField', 'BinaryField'):
             return False
         return create_index
 
@@ -387,7 +447,13 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             # Firebird < 6 rejects COLLATE in ALTER ... TYPE, so a collation
             # change goes through a temp column like blob conversions do.
             extra_sql = []
-            if old_field.unique:
+            if old_field.primary_key:
+                # The primary key falls with the old column; recreate it on
+                # the rebuilt one.
+                for name in self._constraint_names(model, [old_field.column], primary_key=True):
+                    self.execute(self._delete_constraint_sql(self.sql_delete_pk, model, name))
+                extra_sql.append((self._create_primary_key_sql(model, new_field), []))
+            elif old_field.unique:
                 for name in self._constraint_names(model, [old_field.column], unique=True):
                     self.execute(self._delete_constraint_sql(self.sql_delete_unique, model, name))
                     extra_sql.append((self.sql_create_unique % {
@@ -672,10 +738,13 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         #  2. Update existing NULL rows with new default
         #  3. Replace NULL constraint with NOT NULL
         #  4. Drop the default again.
-        # Default change?
+        # Default change? Django does not keep defaults in the database, so a
+        # database default is only needed transiently, to fill existing rows
+        # when a column becomes NOT NULL.
         old_default = self.effective_default(old_field)
         new_default = self.effective_default(new_field)
         needs_database_default = (
+                old_field.null and not new_field.null and
                 old_default != new_default and
                 new_default is not None and
                 not self.skip_default(new_field)
@@ -891,7 +960,8 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
                             if field == model_field.name:
                                 old_fields.append(model_field)
                                 new_fields.append(model_field)
-                unique_constraints.append([new_fields, self._constraint_names(model, old_fields, unique=True)])
+                unique_constraints.append([new_fields, self._constraint_names(
+                    model, [field.column for field in old_fields], unique=True)])
         return unique_constraints
 
     def _create_index_sql(self, model, *, fields=None, name=None, suffix='', using='',
@@ -1165,5 +1235,12 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
                     cur.execute(str(sql), params)
                 except Exception as e:
                     raise e
+            if self.connection.force_debug_cursor or settings.DEBUG:
+                # This path bypasses Django's cursor wrapper, so record the
+                # query for CaptureQueriesContext/assertNumQueries ourselves.
+                self.connection.queries_log.append({
+                    'sql': self.connection.ops.last_executed_query(None, str(sql), params),
+                    'time': '0.000',
+                })
         else:
             super(DatabaseSchemaEditor, self).execute(sql, params)
