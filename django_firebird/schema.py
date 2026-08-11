@@ -208,13 +208,6 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             for unique in model._meta.unique_together
         ]
 
-        # Work out the new value for index_together, taking renames into
-        # account
-        index_together = [
-            [rename_mapping.get(n, n) for n in index]
-            for index in model._meta.index_together
-        ]
-
         indexes = model._meta.indexes
 
         constraints = list(model._meta.constraints)
@@ -233,7 +226,6 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             'app_label': model._meta.app_label,
             'db_table': model._meta.db_table,
             'unique_together': unique_together,
-            'index_together': index_together,
             'indexes': indexes,
             'constraints': constraints,
             'apps': apps,
@@ -249,7 +241,6 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             'app_label': model._meta.app_label,
             'db_table': new_db_table,
             'unique_together': unique_together,
-            'index_together': index_together,
             'indexes': indexes,
             'constraints': constraints,
             'apps': apps,
@@ -939,7 +930,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             # self.deferred_sql.append(self._create_unique_sql(model, columns))
             self.create_unique(self._create_unique_sql(model, columns))
 
-        # Add any field index and index_together's (deferred as SQLite _remake_table needs it)
+        # Add any field indexes (deferred as SQLite _remake_table needs it)
         self._model_indexes_sql(model)
 
         # Make M2M tables
@@ -950,18 +941,13 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
     def _model_indexes_sql(self, model):
         """
         Return a list of all index SQL statements (field indexes,
-        index_together, Meta.indexes) for the specified model.
+        Meta.indexes) for the specified model.
         """
         if not model._meta.managed or model._meta.proxy or model._meta.swapped:
             return []
         output = []
         for field in model._meta.local_fields:
             self._field_indexes_sql(model, field)
-
-        for field_names in model._meta.index_together:
-            fields = [model._meta.get_field(field) for field in field_names]
-            create_statement = self._create_index_sql(model, fields=fields, suffix="_idx")
-            self.create_index(create_statement)
 
         for index in model._meta.indexes:
             self.add_index(model, index)

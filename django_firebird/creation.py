@@ -29,13 +29,23 @@ class DatabaseCreation(BaseDatabaseCreation):
                 print("Closing active connection")
             self.connection.close()
 
+    def _build_dsn(self, database, default_host=None):
+        # firebird-driver has no host/port arguments; the server location
+        # must be embedded in the DSN as host[/port]:database.
+        settings_dict = self.connection.settings_dict
+        host = settings_dict.get('HOST') or default_host
+        port = settings_dict.get('PORT')
+        if not host:
+            return database
+        if port:
+            return '%s/%s:%s' % (host, port, database)
+        return '%s:%s' % (host, database)
+
     def _get_connection_params(self, **overrides):
         settings_dict = self.connection.settings_dict
-        conn_params = {'charset': 'UTF8', 'database': settings_dict['NAME']}
-        if settings_dict['HOST']:
-            conn_params['host'] = settings_dict['HOST']
-        if settings_dict['PORT']:
-            conn_params['port'] = settings_dict['PORT']
+        conn_params = {'charset': 'UTF8'}
+        database = overrides.pop('database', settings_dict['NAME'])
+        conn_params['database'] = self._build_dsn(database)
         if settings_dict['USER']:
             conn_params['user'] = settings_dict['USER']
         if settings_dict['PASSWORD']:
@@ -49,29 +59,34 @@ class DatabaseCreation(BaseDatabaseCreation):
     def _get_creation_params(self, **overrides):
         settings_dict = self.connection.settings_dict
         params = {}
-        if 'USER' in settings_dict:
+        if settings_dict.get('USER'):
             params['user'] = settings_dict['USER']
-        if 'PASSWORD' in settings_dict:
+        if settings_dict.get('PASSWORD'):
             params['password'] = settings_dict['PASSWORD']
         params['charset'] = settings_dict.get('CHARSET') or 'UTF8'
-        params['host'] = settings_dict.get('HOST') or 'localhost'
-        params['port'] = settings_dict.get('PORT') or 3050
+        params['page_size'] = 8192
 
         test_settings = settings_dict.get('TEST')
         if test_settings:
-            if 'NAME' in test_settings:
-                params['database'] = settings_dict['NAME']
-            params['host'] = settings_dict.get('HOST') or params.get('host')
-            params['port'] = settings_dict.get('PORT') or params.get('port')
-            params['charset'] = test_settings.get('CHARSET') or params.get('charset')
-            params['page_size'] = test_settings.get('PAGE_SIZE') or 8192
+            params['charset'] = test_settings.get('CHARSET') or params['charset']
+            params['page_size'] = test_settings.get('PAGE_SIZE') or params['page_size']
         params.update(overrides)
         return params
 
     def _create_database(self, test_database_name, verbosity):
         self._check_active_connection(verbosity)
         params = self._get_creation_params(database=test_database_name)
-        connection = Database.create_database(**params)
+        # Database creation attributes are taken from the driver configuration,
+        # not from create_database() arguments.
+        db_defaults = Database.driver_config.db_defaults
+        db_defaults.page_size.value = params['page_size']
+        db_defaults.db_charset.value = params['charset']
+        connection = Database.create_database(
+            self._build_dsn(params['database'], default_host='localhost'),
+            user=params.get('user'),
+            password=params.get('password'),
+            charset=params['charset'],
+        )
         connection.execute_immediate("CREATE EXCEPTION teste '';")
         connection.commit()
         connection.close()

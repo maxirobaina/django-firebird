@@ -18,6 +18,7 @@ from django.utils.asyncio import async_unsafe
 from django.utils.encoding import smart_str
 from django.utils.functional import cached_property
 
+from . import expressions  # NOQA: registers as_firebird() on Django expressions
 from .operations import DatabaseOperations
 from .features import DatabaseFeatures
 from .client import DatabaseClient

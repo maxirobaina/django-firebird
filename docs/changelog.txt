@@ -1,6 +1,17 @@
 Changelog
 =========
 
+v5.0.0 (in development)
+-----------------------
++ Rename python package from firebird to django_firebird to avoid the
+  namespace conflict with firebird-driver #130
++ Upgrade firebird-driver to 2.x, fixing import-time TypeError with
+  firebird-base 2.x #164
++ Adapt test database creation to the firebird-driver 2.x API
+  (no host/port/page_size arguments; DSN plus driver_config instead)
++ Remove index_together handling from the schema editor (removed in Django 5.1)
+
+
 v1.11.0
 -------
 + Initial adjustments for support django 1.11 #93

@@ -7,7 +7,7 @@ DB_HOST = '127.0.0.1'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'firebird',
+        'ENGINE': 'django_firebird',
         'NAME': 'django-test-default',
         'USER': 'SYSDBA',
         'PASSWORD': 'masterkey',
@@ -23,7 +23,7 @@ DATABASES = {
         }
     },
     'other': {
-        'ENGINE': 'firebird',
+        'ENGINE': 'django_firebird',
         'NAME': 'fb_other.fdb',
         'USER': 'SYSDBA',
         'PASSWORD': 'masterkey',
