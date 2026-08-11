@@ -3,6 +3,10 @@ Changelog
 
 v5.1.0 (in development)
 -----------------------
+
+
+v5.0.1 (2026-08-11)
+-------------------
 + Add GitHub Actions CI running the suite against Firebird 3, 4, 5 and the
   6 development snapshot (official Docker images) on Python 3.11/3.12
 + Test settings honour FIREBIRD_HOST/PORT/USER/PASSWORD/DATABASE/
