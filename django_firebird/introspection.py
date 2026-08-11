@@ -105,11 +105,11 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
               , rf.rdb$default_source
               ,
               case
-                  when (coalesce(rf.rdb$collation_id, 0) = 0) then
+                  when (coalesce(rf.rdb$collation_id, f.rdb$collation_id, 0) = 0) then
                     cast(null as varchar(63))
                   else
                     (select trim(trailing from c.rdb$collation_name) from rdb$collations c
-                        where c.rdb$collation_id = rf.rdb$collation_id
+                        where c.rdb$collation_id = coalesce(rf.rdb$collation_id, f.rdb$collation_id)
                         and c.rdb$character_set_id = f.rdb$character_set_id)
                   end as coll_name
             from
@@ -258,9 +258,10 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
             elif constraint_type == 'UNIQUE':
                 unique = True
             elif constraint_type == 'FOREIGN KEY':
-                # The implicit index that backs the constraint is not reported
-                # separately (like on PostgreSQL); an FK entry has index=False.
+                # The implicit index that backs the constraint shares the
+                # constraint's name, so the single entry carries both flags.
                 foreign_key = (other_table, other_column,)
+                index = True
             elif constraint_type == 'INDEX':
                 index = True
 

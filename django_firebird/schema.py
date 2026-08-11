@@ -35,7 +35,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
     sql_rename_table = "Rename table is not allowed"  # Not supported
     sql_delete_table = "DROP TABLE %(table)s;"
     sql_create_column = "ALTER TABLE %(table)s ADD %(column)s %(definition)s"
-    sql_alter_column_type = "ALTER %(column)s TYPE %(type)s"
+    sql_alter_column_type = "ALTER %(column)s TYPE %(type)s%(collation)s"
     sql_delete_column = "ALTER TABLE %(table)s DROP %(column)s"
     sql_rename_column = "ALTER TABLE %(table)s ALTER %(old_column)s TO %(new_column)s"
     sql_create_fk = "ALTER TABLE %(table)s ADD CONSTRAINT %(name)s FOREIGN KEY (%(column)s) REFERENCES %(to_table)s (%(to_column)s)"
@@ -47,6 +47,19 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
     # If an index is created or a unique on a large VARCHAR field, the expression with hash function is used
     sql_create_hash_index = "CREATE INDEX %(name)s ON %(table)s computed by(hash(%(columns)s))"
     sql_create_unique_hash_index = "CREATE UNIQUE INDEX %(name)s ON %(table)s computed by(hash(%(columns)s))"
+
+    def _collate_sql(self, collation, old_collation=None, table_name=None):
+        # ALTER ... TYPE resolves an unqualified type against character set
+        # NONE, so name the connection character set explicitly.
+        db_charset = getattr(self.connection, '_db_charset', None)
+        if not collation:
+            if old_collation and db_charset:
+                # Reset the column to the character set's default collation
+                # (leaving the type unqualified would keep the old collation).
+                return 'CHARACTER SET %s' % db_charset
+            return ''
+        prefix = 'CHARACTER SET %s ' % db_charset if db_charset else ''
+        return prefix + 'COLLATE %s' % self.quote_name(collation)
 
     def _alter_column_set_null(self, table_name, column_name, is_null):
         engine_ver = str(self.connection.connection.info.engine_version).split('.')
@@ -382,6 +395,12 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
                     "new_column": self.quote_name(new_field.column),
                 }, [])
             )
+            if not new_field.null:
+                # The temp column was created without NOT NULL to allow the
+                # data copy; restore the constraint on the final column.
+                alter_blob_actions.append(
+                    (self._alter_column_set_null(model._meta.db_table, new_field.column, False), [])
+                )
 
         if old_field.unique:
             # In Firebird, alter a column type with a unique constraint will fails
@@ -403,7 +422,11 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             if new_type != self.connection.data_types['TextField'] or new_type == self.connection.data_types[
                 'BinaryField']:
                 # alter column type
-                params = {"column": self.quote_name(new_field.column), "type": new_type}
+                params = {
+                    "column": self.quote_name(new_field.column),
+                    "type": new_type,
+                    "collation": ' ' + self._collate_sql(new_collation) if new_collation else '',
+                }
                 alter_sql = self.sql_alter_column_type % params
                 return ((alter_sql, [],), extra_sql,)
         if new_type != self.connection.data_types['TextField'] and new_type != self.connection.data_types[
@@ -433,11 +456,32 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             "old_column": self.quote_name("mirgate_temp_" + new_field.column),
             "new_column": self.quote_name(new_field.column),
         }, [])]
+        if not new_field.null:
+            # The temp column was created without NOT NULL to allow the data
+            # copy; restore the constraint on the final column.
+            alter_blob_actions.append(
+                (self._alter_column_set_null(model._meta.db_table, new_field.column, False), [])
+            )
         return alter_blob_actions, [],
 
     def _alter_field(self, model, old_field, new_field, old_type, new_type,
                      old_db_params, new_db_params, strict=False):
         """Actually perform a "physical" (non-ManyToMany) field update."""
+
+        auto_types = ("AutoField", "BigAutoField", "SmallAutoField")
+        old_is_auto = old_field.get_internal_type() in auto_types
+        new_is_auto = new_field.get_internal_type() in auto_types
+        if old_is_auto and not new_is_auto:
+            # The field loses its auto increment: drop the backing trigger and
+            # sequence so the database no longer fills in missing values.
+            tbl = model._meta.db_table
+            if self.trigger_exist(tbl):
+                self.execute('DROP TRIGGER %s' % self.connection.ops.get_sequence_trigger_name(tbl))
+            if self.sequence_exist(tbl):
+                self.execute('DROP SEQUENCE %s' % self.connection.ops.get_sequence_name(tbl))
+        elif new_is_auto and not old_is_auto:
+            for statement in self.connection.ops.autoinc_sql(model._meta.db_table, new_field.column) or ():
+                self.execute(statement)
 
         # Drop any FK constraints, we'll remake them later
         fks_dropped = set()
@@ -538,8 +582,8 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         null_actions = []
         post_actions = []
         fragment = None
-        # Type change?
-        if old_type != new_type:
+        # Type or collation change?
+        if old_type != new_type or old_collation != new_collation:
             # Find and remove the unique together constraints for this field
             unique_together_constraints = self._get_unique_together_constraints(model, new_field, old_field)
             self._delete_unique_together_constraints(model, unique_together_constraints)
@@ -869,6 +913,10 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         # Create column SQL, add FK deferred if needed
         column_sqls = []
         params = []
+        # Sequence/trigger statements for auto fields run right after the
+        # table is created (not deferred, so editor.deferred_sql only holds
+        # field-related statements as the schema tests expect).
+        autoinc_statements = []
         for field in model._meta.local_fields:
             if isinstance(field, CharField) and field.max_length > 32765:
                 field.max_length = 8191  # max for 4-byte character sets
@@ -902,12 +950,10 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
                 definition,
             ))
             # Autoincrement SQL (for backends with post table definition variant)
-            if (field.get_internal_type() in ("AutoField", "BigAutoField", "SmallAutoField")) \
-                    or (field.primary_key and (
-                    field.get_internal_type() in ("SmallIntegerField", "IntegerField", "BigIntegerField"))):
+            if field.get_internal_type() in ("AutoField", "BigAutoField", "SmallAutoField"):
                 autoinc_sql = self.connection.ops.autoinc_sql(model._meta.db_table, field.column)
                 if autoinc_sql:
-                    self.deferred_sql.extend(autoinc_sql)
+                    autoinc_statements.extend(autoinc_sql)
 
         constraints = [constraint.constraint_sql(model, self) for constraint in model._meta.constraints]
         # Make the table
@@ -921,6 +967,9 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
                 sql += ' ' + tablespace_sql
         # Prevent using [] as params, in the case a literal '%' is used in the definition
         self.execute(sql, params or None)
+
+        for statement in autoinc_statements:
+            self.execute(statement)
 
         # Add any unique_togethers (always deferred, as some fields might be
         # created afterwards, like geometry fields with some backends)
@@ -991,6 +1040,17 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
                 logger.info(str(e))
                 pass
 
+    def trigger_exist(self, table):
+        trg_name = str(self.connection.ops.get_sequence_trigger_name(table)).replace("\"", "\'")
+        sql = """
+        SELECT RDB$TRIGGER_NAME
+        FROM RDB$TRIGGERS
+        WHERE RDB$TRIGGER_NAME = %s
+        """ % trg_name
+        with self.connection.cursor() as cursor:
+            cursor.execute(sql)
+            return cursor.fetchone() is not None
+
     def sequence_exist(self, table):
         seq_name = str(self.connection.ops.get_sequence_name(table)).replace("\"", "\'")
         sql = """
@@ -1026,11 +1086,19 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
 
         logger.debug("%s; (params %r)", sql, params, extra={'params': params, 'sql': sql})
         if self.connection.features.autocommit_when_autocommit_is_off:
-            for tr in self.connection.connection.transactions:
-                if tr.is_active():
-                    tr.commit()
+            from firebird.driver import DatabaseError as FbDatabaseError, TPB
+            try:
+                for tr in self.connection.connection.transactions:
+                    if tr.is_active():
+                        tr.commit()
+            except FbDatabaseError as e:
+                # Dead attachment (e.g. database shut down and back online):
+                # reconnect and carry on, there is no transaction state to keep.
+                if 'shutdown' in str(e) and not self.connection.in_atomic_block:
+                    self.connection.connect()
+                else:
+                    raise
             # Transaction Context Manager automatically commit statement
-            from firebird.driver import TPB
             tpb = TPB(lock_timeout=getattr(self.connection, '_lock_timeout', -1)).get_buffer()
             with transaction(self.connection.connection.transaction_manager(default_tpb=tpb)) as tr:
                 try:

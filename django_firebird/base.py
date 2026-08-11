@@ -227,31 +227,128 @@ class DatabaseWrapper(BaseDatabaseWrapper):
                 self.connections.remove(cc)
         BaseDatabaseWrapper.close(self)
 
+    def is_usable(self):
+        """
+        Check whether the attachment is still alive, so Django can discard
+        broken connections (e.g. after the database was shut down).
+        """
+        if self.connection is None or self.connection.is_closed():
+            return False
+        try:
+            # A cheap info request that requires a server round trip.
+            self.connection.info.attachment_id
+        except Database.Error:
+            return False
+        return True
+
     def create_cursor(self, name=None):
         """Creates a cursor. Assumes that a connection is established."""
         if self.connection.is_closed():
             raise InterfaceError("Cannot create cursor for closed connection")
+        tpb = TPB(isolation=Isolation.READ_COMMITTED,
+                  access_mode=TraAccessMode.WRITE,
+                  auto_commit=False,
+                  lock_timeout=getattr(self, '_lock_timeout', -1),
+                  ignore_limbo=True).get_buffer()
         if self.get_autocommit():
-            self.connection.begin(TPB(isolation=Isolation.READ_COMMITTED,
-                                       access_mode=TraAccessMode.WRITE,
-                                       auto_commit=False,
-                                       lock_timeout=getattr(self, '_lock_timeout', -1),
-                                       ignore_limbo=True).get_buffer())
+            try:
+                self.connection.begin(tpb)
+            except Database.DatabaseError as e:
+                # The attachment is dead (e.g. the database was shut down and
+                # brought back online). Outside of an atomic block no state
+                # can be lost, so reconnect instead of failing every
+                # subsequent operation.
+                if 'shutdown' in str(e) and not self.in_atomic_block:
+                    self.connect()
+                    self.connection.begin(tpb)
+                else:
+                    raise
 
         cursor = self.connection.cursor()
-        return FirebirdCursorWrapper(cursor, self.encoding, self.get_autocommit())
+        return FirebirdCursorWrapper(cursor, self.encoding, self.get_autocommit(), db=self)
+
+    # Driver connections whose attachment died are parked here instead of
+    # being closed: any interface release on a dead attachment goes over the
+    # wire and may hang, so their finalizers must never run.
+    _dead_connection_graveyard = []
+
+    @staticmethod
+    def _neutralize_interfaces(obj, _depth=0, _seen=None):
+        """Best effort: zero the refcount of driver interface wrappers
+        reachable from `obj` so their __del__ skips the wire call."""
+        if _seen is None:
+            _seen = set()
+        if id(obj) in _seen or _depth > 4 or obj is None:
+            return
+        _seen.add(id(obj))
+        if hasattr(obj, '_refcnt'):
+            try:
+                obj._refcnt = 0
+            except Exception:
+                pass
+        values = []
+        try:
+            values.extend(vars(obj).values())
+        except TypeError:
+            pass
+        if isinstance(obj, (list, tuple, set)):
+            values.extend(obj)
+        for value in values:
+            if callable(getattr(value, '__call__', None)) and value.__class__.__name__ == 'weakref':
+                continue
+            module = getattr(type(value), '__module__', '')
+            if module.startswith('firebird.') or isinstance(value, (list, tuple, set)):
+                DatabaseWrapper._neutralize_interfaces(value, _depth + 1, _seen)
+
+    def _discard_dead_connection(self, exc):
+        """
+        If `exc` signals that the attachment is gone (e.g. the database was
+        shut down), park this wrapper's connection so the next operation
+        opens a fresh one instead of failing forever.
+        """
+        if 'shutdown' in str(exc):
+            self._connection_is_dead = True
+            try:
+                self.close()
+            except Exception:
+                pass
+
+    def _close(self):
+        if self.connection is not None:
+            if getattr(self, '_connection_is_dead', False):
+                self._connection_is_dead = False
+                self._neutralize_interfaces(self.connection)
+                self._dead_connection_graveyard.append(self.connection)
+                self.connections = [c for c in self.connections if c is not self.connection]
+                return
+            with self.wrap_database_errors:
+                try:
+                    return self.connection.close()
+                except Database.DatabaseError as e:
+                    # Closing a dead attachment fails; there is nothing left
+                    # to release on the server anyway.
+                    if 'shutdown' not in str(e):
+                        raise
 
     def _commit(self):
         if self.connection is not None:
             with self.wrap_database_errors:
                 if self.connection.main_transaction.is_active():
-                    return self.connection.commit()
+                    try:
+                        return self.connection.commit()
+                    except Database.DatabaseError as e:
+                        self._discard_dead_connection(e)
+                        raise
 
     def _rollback(self):
         if self.connection is not None:
             with self.wrap_database_errors:
                 if self.connection.main_transaction.is_active():
-                    return self.connection.rollback()
+                    try:
+                        return self.connection.rollback()
+                    except Database.DatabaseError as e:
+                        self._discard_dead_connection(e)
+                        raise
 
     # ##### Foreign key constraints checks handling #####
 
@@ -625,10 +722,11 @@ class FirebirdCursorWrapper(object):
         """ Closes the cursor. """
         self.cursor.close()
 
-    def __init__(self, cursor, encoding, autocommit):
+    def __init__(self, cursor, encoding, autocommit, db=None):
         self.cursor = cursor
         self.encoding = encoding
         self.autocommit = autocommit
+        self.db = db
 
     def execute(self, query, params=None):
         if params is None:
@@ -651,6 +749,8 @@ class FirebirdCursorWrapper(object):
             code = self.get_sql_code(e)
             if code in self.codes_for_integrityerror:
                 raise utils.IntegrityError(*self.error_info(e, query, params))
+            if self.db is not None:
+                self.db._discard_dead_connection(e)
             raise
 
     def executemany(self, query, param_list):
@@ -666,6 +766,8 @@ class FirebirdCursorWrapper(object):
             code = self.get_sql_code(e)
             if code in self.codes_for_integrityerror:
                 raise utils.IntegrityError(*self.error_info(e, query, param_list[0]))
+            if self.db is not None:
+                self.db._discard_dead_connection(e)
             raise
 
     def convert_query(self, query, num_params):

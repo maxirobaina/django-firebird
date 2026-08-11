@@ -45,8 +45,25 @@ v5.0.0 (in development)
 + Known issue: Firebird 6 development builds ignore ORDER BY on DISTINCT
   queries filtered with IN (subquery); many_to_one.test_selects is skipped
   on Firebird 6 until this is fixed upstream
-+ Known issue: the schema app tests now run (no more hangs with
-  lock_timeout set) but still have failures to work through
++ Schema editor fixes: auto-increment sequences/triggers are created only
+  for real AutoFields (no longer for plain integer primary keys), run
+  right after CREATE TABLE instead of via deferred SQL, and are dropped
+  or created when a field alter changes auto-increment status; columns
+  converted through the temp-column path (from/to blob) keep NOT NULL;
+  collation changes are applied on alter (with an explicit CHARACTER SET,
+  which ALTER TYPE needs), and altering to no collation resets to the
+  character set default
++ Declare test_collations (UNICODE_CI/UNICODE) and
+  supports_collation_on_textfield=False (blobs cannot be collated);
+  introspection also reports domain-level column collations
++ Recover from dead attachments: when the server shuts a connection down
+  (e.g. gfix -shut or a server restart), the backend discards it and the
+  next operation reconnects instead of failing forever; driver objects of
+  the dead attachment are quarantined so their finalizers cannot hang on
+  wire calls
++ The schema app now runs to completion; remaining errors on Firebird 6
+  development builds are caused by the server sporadically shutting down
+  attachments under heavy DDL churn (under investigation upstream)
 
 
 v1.11.0

@@ -408,16 +408,20 @@ class IntrospectionTests(TransactionTestCase):
             elif details["columns"] == ["voting_number"] and details["unique"]:
                 assertDetails(details, ["voting_number"], unique=True)
                 field_constraints.add(name)
+            elif details["columns"] == ["article_id"] and details["foreign_key"]:
+                # On Firebird the index backing a foreign key shares the
+                # constraint's name, so a single entry carries both flags.
+                assertDetails(
+                    details, ["article_id"],
+                    foreign_key=("introspection_article", "id"),
+                    index=connection.vendor == 'firebird',
+                )
+                field_constraints.add(name)
             elif details["columns"] == ["article_id"] and details["index"]:
                 assertDetails(details, ["article_id"], index=True)
                 field_constraints.add(name)
             elif details["columns"] == ["id"] and details["primary_key"]:
                 assertDetails(details, ["id"], primary_key=True, unique=True)
-                field_constraints.add(name)
-            elif details["columns"] == ["article_id"] and details["foreign_key"]:
-                assertDetails(
-                    details, ["article_id"], foreign_key=("introspection_article", "id")
-                )
                 field_constraints.add(name)
             elif details["check"]:
                 # Some databases (e.g. Oracle) include additional check

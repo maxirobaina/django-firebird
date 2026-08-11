@@ -69,6 +69,21 @@ class DatabaseFeatures(BaseDatabaseFeatures):
     def supports_transactions(self):
         return True
 
+    # Collations can be applied to (var)char columns but not to text blobs.
+    supports_collation_on_charfield = True
+    supports_collation_on_textfield = False
+
+    @cached_property
+    def test_collations(self):
+        # Collations of the UTF8 character set.
+        return {
+            'ci': 'UNICODE_CI',
+            'cs': 'UNICODE',
+            'non_default': 'UNICODE_CI_AI',
+            'swedish_ci': None,
+            'virtual': None,
+        }
+
     @cached_property
     def introspected_field_types(self):
         # Auto fields are implemented with sequences and triggers, positive

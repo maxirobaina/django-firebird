@@ -1885,8 +1885,12 @@ class SchemaTests(TransactionTestCase):
             (Author._meta.db_table, Author._meta.pk.column),
         )
         # The index on ForeignKey is replaced with a unique constraint for
-        # OneToOneField.
-        self.assertEqual(counts, {"fks": expected_fks, "uniques": 1, "indexes": 0})
+        # OneToOneField. On Firebird the foreign key's implicit backing index
+        # is part of the constraint itself and always present.
+        o2o_indexes = 1 if connection.vendor == 'firebird' else 0
+        self.assertEqual(
+            counts, {"fks": expected_fks, "uniques": 1, "indexes": o2o_indexes}
+        )
 
     def test_alter_field_fk_keeps_index(self):
         with connection.schema_editor() as editor:
@@ -1946,7 +1950,12 @@ class SchemaTests(TransactionTestCase):
             BookWithO2O._meta.get_field("author").column,
             (Author._meta.db_table, Author._meta.pk.column),
         )
-        self.assertEqual(counts, {"fks": expected_fks, "uniques": 1, "indexes": 0})
+        # On Firebird the foreign key's implicit backing index is part of the
+        # constraint itself and always present.
+        o2o_indexes = 1 if connection.vendor == 'firebird' else 0
+        self.assertEqual(
+            counts, {"fks": expected_fks, "uniques": 1, "indexes": o2o_indexes}
+        )
 
         old_field = BookWithO2O._meta.get_field("author")
         new_field = ForeignKey(Author, CASCADE)
@@ -1980,7 +1989,12 @@ class SchemaTests(TransactionTestCase):
             BookWithO2O._meta.get_field("author").column,
             (Author._meta.db_table, Author._meta.pk.column),
         )
-        self.assertEqual(counts, {"fks": expected_fks, "uniques": 1, "indexes": 0})
+        # On Firebird the foreign key's implicit backing index is part of the
+        # constraint itself and always present.
+        o2o_indexes = 1 if connection.vendor == 'firebird' else 0
+        self.assertEqual(
+            counts, {"fks": expected_fks, "uniques": 1, "indexes": o2o_indexes}
+        )
 
         old_field = BookWithO2O._meta.get_field("author")
         # on_delete changed from CASCADE.
@@ -1995,7 +2009,9 @@ class SchemaTests(TransactionTestCase):
             (Author._meta.db_table, Author._meta.pk.column),
         )
         # The unique constraint remains.
-        self.assertEqual(counts, {"fks": expected_fks, "uniques": 1, "indexes": 0})
+        self.assertEqual(
+            counts, {"fks": expected_fks, "uniques": 1, "indexes": o2o_indexes}
+        )
 
     @skipUnlessDBFeature("ignores_table_name_case")
     def test_alter_db_table_case(self):
