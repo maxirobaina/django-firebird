@@ -3,6 +3,8 @@ Changelog
 
 v5.1.0 (in development)
 -----------------------
++ Extensive documentation: rewritten README plus docs/ pages for
+  settings, limitations, backend internals, testing and troubleshooting
 
 
 v5.0.1 (2026-08-11)
