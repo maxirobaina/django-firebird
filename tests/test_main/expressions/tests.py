@@ -1975,6 +1975,9 @@ class FTimeDeltaTests(TestCase):
         self.assertEqual(queryset.get(), self.e0)
 
     @skipUnlessDBFeature("supports_temporal_subtraction")
+    @unittest.skipIf(connection.vendor == 'firebird',
+                     'Firebird timestamps have 100 microsecond resolution, so exact '
+                     'microsecond durations cannot round-trip.')
     def test_time_subtraction(self):
         Time.objects.create(time=datetime.time(12, 30, 15, 2345))
         queryset = Time.objects.annotate(
@@ -2043,6 +2046,9 @@ class FTimeDeltaTests(TestCase):
         self.assertTrue(queryset.exists())
 
     @skipUnlessDBFeature("supports_temporal_subtraction")
+    @unittest.skipIf(connection.vendor == 'firebird',
+                     'Firebird timestamps have 100 microsecond resolution, so exact '
+                     'microsecond durations cannot round-trip.')
     def test_datetime_subtraction_microseconds(self):
         delta = datetime.timedelta(microseconds=8999999999999999)
         Experiment.objects.update(end=F("start") + delta)

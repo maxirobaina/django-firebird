@@ -42,6 +42,11 @@ v5.0.0 (in development)
 + sql_flush deletes tables in foreign key dependency order
 + New 'lock_timeout' entry in OPTIONS sets the transaction lock wait
   timeout in seconds (default: wait forever)
++ Implement DatabaseOperations.subtract_temporals() and enable
+  supports_temporal_subtraction, so subtracting date/time/datetime fields
+  yields DurationField results #84
++ RDB$DB_KEY can be used as db_column: the pseudo-column is no longer
+  quoted #139
 + Known issue: Firebird 6 development builds ignore ORDER BY on DISTINCT
   queries filtered with IN (subquery); many_to_one.test_selects is skipped
   on Firebird 6 until this is fixed upstream

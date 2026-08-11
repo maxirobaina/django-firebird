@@ -433,6 +433,26 @@ class DatabaseOperations(BaseDatabaseOperations):
     def format_for_duration_arithmetic(self, sql):
         return '%s%s' % (sql, self._duration_marker)
 
+    def subtract_temporals(self, internal_type, lhs, rhs):
+        lhs_sql, lhs_params = lhs
+        rhs_sql, rhs_params = rhs
+        if internal_type == 'DateField':
+            params = (*rhs_params, *lhs_params)
+            return (
+                'CAST(DATEDIFF(DAY FROM %s TO %s) * 86400000000 AS BIGINT)' % (rhs_sql, lhs_sql),
+                params,
+            )
+        # DATEDIFF's finest unit is MILLISECOND, so combine whole seconds with
+        # the difference of the fractional parts, which EXTRACT(MILLISECOND)
+        # reports at the server's full 100 microsecond resolution.
+        params = (*rhs_params, *lhs_params, *lhs_params, *rhs_params)
+        return (
+            'CAST(DATEDIFF(SECOND FROM %s TO %s) * 1000000 + '
+            '(EXTRACT(MILLISECOND FROM %s) - EXTRACT(MILLISECOND FROM %s)) * 1000 AS BIGINT)'
+            % (rhs_sql, lhs_sql, lhs_sql, rhs_sql),
+            params,
+        )
+
     def year_lookup_bounds_for_datetime_field(self, value, iso_year=False):
         first = '%s-01-01 00:00:00' % value
         second = '%s-12-31 23:59:59.9999' % value
@@ -444,6 +464,10 @@ class DatabaseOperations(BaseDatabaseOperations):
         return [first, second]
 
     def quote_name(self, name):
+        if name.upper() == 'RDB$DB_KEY':
+            # The pseudo-column must not be quoted, the quoted form is not
+            # recognized (#139).
+            return 'RDB$DB_KEY'
         if not name.startswith('"') and not name.endswith('"'):
             name = '"%s"' % utils.truncate_name(name, self.max_name_length())
         return name.upper()

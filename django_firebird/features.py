@@ -45,7 +45,7 @@ class DatabaseFeatures(BaseDatabaseFeatures):
 
     # Does the database driver supports same type temporal data subtraction
     # by returning the type used to store duration field?
-    supports_temporal_subtraction = False
+    supports_temporal_subtraction = True
 
     supports_microsecond_precision = False
 
