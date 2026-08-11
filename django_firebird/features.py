@@ -74,11 +74,6 @@ class DatabaseFeatures(BaseDatabaseFeatures):
     supports_collation_on_textfield = False
 
     @cached_property
-    def has_zoneinfo_database(self):
-        # Time zone conversion in SQL (AT TIME ZONE) requires Firebird 4+.
-        return self.connection.ops.firebird_main_version >= 4
-
-    @cached_property
     def supports_high_precision_decimals(self):
         # NUMERIC/DECIMAL precision above 18 digits requires Firebird 4+;
         # Firebird 3 columns are created clamped to 18 digits.
