@@ -46,6 +46,19 @@ class DatabaseOperations(BaseDatabaseOperations):
             super(DatabaseOperations, self).__init__(*args, **kwargs)
 
     @cached_property
+    def firebird_main_version(self):
+        """
+        Major version of the connected Firebird server, e.g. 5.
+
+        Note: firebird_version parses the platform version string
+        ("LI-V6.3.4.1812 Firebird 5.0"), whose leading number continues the
+        InterBase lineage (6.x for every modern Firebird) — the actual server
+        version is only in the trailing product name. Use this property for
+        feature gating.
+        """
+        return int(str(self.connection.connection.info.engine_version).split('.')[0])
+
+    @cached_property
     def firebird_version(self):
         """
         Access method for firebird_version property.

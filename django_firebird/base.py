@@ -209,7 +209,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
 
     def init_connection_state(self):
         """Initializes the database connection settings."""
-        if int(self.ops.firebird_version[3]) >= 4:
+        if self.ops.firebird_main_version >= 4:
             self.features.supports_over_clause = True
             self.features.supports_partial_indexes = True
             self.features.supports_timezones = True

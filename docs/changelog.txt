@@ -3,6 +3,21 @@ Changelog
 
 v5.1.0 (in development)
 -----------------------
++ Add GitHub Actions CI running the suite against Firebird 3, 4, 5 and the
+  6 development snapshot (official Docker images) on Python 3.11/3.12
++ Test settings honour FIREBIRD_HOST/PORT/USER/PASSWORD/DATABASE/
+  DATABASE_OTHER/LOCK_TIMEOUT environment variables
++ Fix server version detection: feature gating now uses the real engine
+  version instead of the leading number of the platform version string,
+  which is the InterBase-lineage 6.x on every modern Firebird
++ Firebird < 6 compatibility for collations: COLLATE is placed at the end
+  of column definitions as the grammar requires, plain type alters no
+  longer name the (preserved) collation, and collation changes go through
+  a temp-column rebuild since ALTER ... TYPE rejects COLLATE there
++ Validated against Firebird 5 stable and 6 snapshot containers: the full
+  suite outside the schema app passes on both; schema app hardening for
+  Firebird < 6 continues (FK bookkeeping in alters, blob indexing,
+  table comments)
 
 
 v5.0.0 (2026-08-11)

@@ -227,7 +227,7 @@ class ManyToOneTests(TestCase):
         self.assertTrue(Parent.bestchild.is_cached(parent))
 
     def test_selects(self):
-        if connection.vendor == 'firebird' and int(connection.ops.firebird_version[3]) >= 6:
+        if connection.vendor == 'firebird' and connection.ops.firebird_main_version >= 6:
             self.skipTest(
                 'Firebird 6 development builds ignore ORDER BY on DISTINCT '
                 'queries filtered with IN (subquery).'

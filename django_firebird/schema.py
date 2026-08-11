@@ -1,6 +1,7 @@
 import copy
 import logging
 import datetime
+import re
 
 from django.apps.registry import Apps
 from django.db.backends.ddl_references import Statement, Table, IndexName, IndexColumns, TableColumns, Expressions
@@ -48,7 +49,26 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
     sql_create_hash_index = "CREATE INDEX %(name)s ON %(table)s computed by(hash(%(columns)s))"
     sql_create_unique_hash_index = "CREATE UNIQUE INDEX %(name)s ON %(table)s computed by(hash(%(columns)s))"
 
+    # Matches the collation fragment inside a column definition so it can be
+    # moved to the end, where Firebird's column grammar requires it.
+    _collate_fragment_re = re.compile(r' (?:CHARACTER SET \S+ )?COLLATE ("[^"]+"|\S+)')
+
+    def column_sql(self, model, field, include_default=False):
+        sql, params = super().column_sql(model, field, include_default)
+        if sql:
+            # In a column definition, COLLATE must come last (after NOT NULL
+            # and column constraints); the column's character set is the
+            # database default, so the CHARACTER SET part is dropped.
+            match = self._collate_fragment_re.search(sql)
+            if match:
+                sql = sql[:match.start()] + sql[match.end():] + ' COLLATE %s' % match.group(1)
+        return sql, params
+
     def _collate_sql(self, collation, old_collation=None, table_name=None):
+        if collation == old_collation:
+            # No collation change: ALTER ... TYPE preserves the collation, so
+            # do not name it (Firebird < 6 rejects COLLATE in ALTER TYPE).
+            return ''
         # ALTER ... TYPE resolves an unqualified type against character set
         # NONE, so name the connection character set explicitly.
         db_charset = getattr(self.connection, '_db_charset', None)
@@ -363,6 +383,45 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         super(DatabaseSchemaEditor, self).remove_field(model, field)
 
     def _alter_column_type_sql(self, model, old_field, new_field, new_type, old_collation, new_collation):
+        if old_collation != new_collation and self.connection.ops.firebird_main_version < 6:
+            # Firebird < 6 rejects COLLATE in ALTER ... TYPE, so a collation
+            # change goes through a temp column like blob conversions do.
+            extra_sql = []
+            if old_field.unique:
+                for name in self._constraint_names(model, [old_field.column], unique=True):
+                    self.execute(self._delete_constraint_sql(self.sql_delete_unique, model, name))
+                    extra_sql.append((self.sql_create_unique % {
+                        "table": self.quote_name(model._meta.db_table),
+                        "name": self.quote_name(name),
+                        "columns": self.quote_name(new_field.column),
+                        "nulls_distinct": '',
+                        "deferrable": '',
+                    }, []))
+            definition = new_type
+            if new_collation:
+                definition += ' COLLATE %s' % self.quote_name(new_collation)
+            actions = [(self.sql_create_column % {
+                "table": self.quote_name(model._meta.db_table),
+                "column": self.quote_name("mirgate_temp_" + new_field.column),
+                "definition": definition,
+            }, []), (self.sql_update_with_default % {
+                "table": self.quote_name(model._meta.db_table),
+                "column": self.quote_name("mirgate_temp_" + new_field.column),
+                "default": self.quote_name(old_field.column),
+            }, []), (self.sql_delete_column % {
+                "table": self.quote_name(model._meta.db_table),
+                "column": self.quote_name(old_field.column),
+            }, []), (self.sql_rename_column % {
+                "table": self.quote_name(model._meta.db_table),
+                "old_column": self.quote_name("mirgate_temp_" + new_field.column),
+                "new_column": self.quote_name(new_field.column),
+            }, [])]
+            if not new_field.null:
+                actions.append(
+                    (self._alter_column_set_null(model._meta.db_table, new_field.column, False), [])
+                )
+            return actions, extra_sql
+
         # The Firebird does not support direct type change to BLOB,
         # therefore this action is divided into 4 stages.
         # Change through temp column.

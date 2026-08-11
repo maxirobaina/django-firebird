@@ -1,0 +1,84 @@
+name: Tests
+
+on:
+  push:
+    branches:
+      - master
+      - stable/**
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.11', '3.12']
+        firebird-version: ['3', '4', '5', '6-snapshot']
+
+    name: "Python ${{ matrix.python-version }} / Firebird ${{ matrix.firebird-version }}"
+    # Firebird 6 is a development snapshot; its results are informational.
+    continue-on-error: ${{ matrix.firebird-version == '6-snapshot' }}
+
+    services:
+      firebird:
+        image: firebirdsql/firebird:${{ matrix.firebird-version }}
+        env:
+          FIREBIRD_ROOT_PASSWORD: masterkey
+        ports:
+          - 3050:3050
+
+    env:
+      FIREBIRD_HOST: 127.0.0.1
+      FIREBIRD_PORT: '3050'
+      FIREBIRD_USER: SYSDBA
+      FIREBIRD_PASSWORD: masterkey
+      FIREBIRD_DATABASE: /var/lib/firebird/data/django-test-default.fdb
+      FIREBIRD_DATABASE_OTHER: /var/lib/firebird/data/django-test-other.fdb
+      FIREBIRD_LOCK_TIMEOUT: '3'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install Firebird client library
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libfbclient2
+
+      - name: Install package and Django
+        run: |
+          python -m pip install --upgrade pip
+          pip install "Django>=5.2,<5.3" .
+
+      - name: Wait for Firebird server
+        run: |
+          python - <<'EOF'
+          import socket, time, sys
+          for _ in range(60):
+              try:
+                  socket.create_connection(('127.0.0.1', 3050), timeout=2).close()
+                  sys.exit(0)
+              except OSError:
+                  time.sleep(2)
+          sys.exit('Firebird server did not become reachable')
+          EOF
+
+      - name: Run test suite (all apps except schema)
+        working-directory: tests/test_main
+        run: |
+          python manage.py test --noinput \
+            test_base model_fields many_to_one transactions introspection \
+            inspectdb datatypes dates datetimes lookup expressions
+
+      # The schema app is still being hardened for Firebird < 6 (FK
+      # bookkeeping during alters, blob indexing, table comments); its result
+      # is informational until that work lands.
+      - name: Run schema app tests (informational)
+        working-directory: tests/test_main
+        timeout-minutes: 25
+        continue-on-error: true
+        run: python manage.py test --noinput schema

@@ -1,22 +1,30 @@
 # Django's settings for test_main project.
+import os
 
 DEBUG = True
 TEMPLATE_DEBUG = DEBUG
 
-DB_HOST = '127.0.0.1'
+# Connection details can be overridden from the environment (used by CI).
+DB_HOST = os.environ.get('FIREBIRD_HOST', '127.0.0.1')
+DB_PORT = os.environ.get('FIREBIRD_PORT', '')
+DB_USER = os.environ.get('FIREBIRD_USER', 'SYSDBA')
+DB_PASSWORD = os.environ.get('FIREBIRD_PASSWORD', 'masterkey')
+DB_NAME = os.environ.get('FIREBIRD_DATABASE', 'django-test-default')
+DB_NAME_OTHER = os.environ.get('FIREBIRD_DATABASE_OTHER', 'django-test-other')
+DB_LOCK_TIMEOUT = int(os.environ.get('FIREBIRD_LOCK_TIMEOUT', '5'))
 
 DATABASES = {
     'default': {
         'ENGINE': 'django_firebird',
-        'NAME': 'django-test-default',
-        'USER': 'SYSDBA',
-        'PASSWORD': 'masterkey',
+        'NAME': DB_NAME,
+        'USER': DB_USER,
+        'PASSWORD': DB_PASSWORD,
         'HOST': DB_HOST,
-        'PORT': '',
-        'OPTIONS': {'charset': 'UTF8', 'lock_timeout': 5},
+        'PORT': DB_PORT,
+        'OPTIONS': {'charset': 'UTF8', 'lock_timeout': DB_LOCK_TIMEOUT},
 
         'TEST': {
-            'NAME': 'django-test-default',
+            'NAME': DB_NAME,
             'CHARSET': 'UTF8',
             'SERIALIZE': False,
             'PAGE_SIZE': 8192,
@@ -24,15 +32,15 @@ DATABASES = {
     },
     'other': {
         'ENGINE': 'django_firebird',
-        'NAME': 'fb_other.fdb',
-        'USER': 'SYSDBA',
-        'PASSWORD': 'masterkey',
+        'NAME': DB_NAME_OTHER,
+        'USER': DB_USER,
+        'PASSWORD': DB_PASSWORD,
         'HOST': DB_HOST,
-        'PORT': '',
-        'OPTIONS': {'charset': 'UTF8', 'lock_timeout': 5},
+        'PORT': DB_PORT,
+        'OPTIONS': {'charset': 'UTF8', 'lock_timeout': DB_LOCK_TIMEOUT},
 
         'TEST': {
-            'NAME': 'django-test-other',
+            'NAME': DB_NAME_OTHER,
             'CHARSET': 'UTF8',
             'SERIALIZE': False,
             'PAGE_SIZE': 8192
