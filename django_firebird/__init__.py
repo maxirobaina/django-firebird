@@ -1,5 +1,5 @@
 from .version import get_version
 
-VERSION = (5, 0, 0, 'final', 0)
+VERSION = (5, 1, 0, 'alpha', 0)
 
 __version__ = get_version(VERSION)

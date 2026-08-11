@@ -1,6 +1,10 @@
 Changelog
 =========
 
+v5.1.0 (in development)
+-----------------------
+
+
 v5.0.0 (2026-08-11)
 -------------------
 + Rename python package from firebird to django_firebird to avoid the
