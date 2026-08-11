@@ -3,6 +3,17 @@ Changelog
 
 v5.1.0 (in development)
 -----------------------
++ Schema app test suite is green on stable Firebird and the schema CI
+  step is now a required check: DDL statements are recorded for Django's
+  query assertions, columns added with a foreign key create the
+  constraint inline in the same statement, table rebuilds (renames)
+  drop and recreate incoming foreign keys, primary keys survive
+  collation rebuilds on Firebird < 6, partial indices are declared for
+  Firebird 5+ only and their WHERE condition is no longer dropped from
+  index DDL, blob columns are never auto-indexed, expression indexes are
+  skipped as unsupported, altering a field no longer emits SET/DROP
+  DEFAULT when only the Python default changed, and unique_together
+  bookkeeping during alters uses column names correctly
 
 
 v5.0.2 (2026-08-11)

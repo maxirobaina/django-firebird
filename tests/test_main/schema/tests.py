@@ -2998,8 +2998,17 @@ class SchemaTests(TransactionTestCase):
         with self.assertLogs("django.db.backends.schema", "DEBUG") as cm:
             with connection.schema_editor() as editor:
                 editor.alter_field(Author, Author._meta.get_field("name"), new_field)
-        # One SQL statement is executed to alter the field.
-        self.assertEqual(len(cm.records), 1)
+        # One SQL statement is executed to alter the field. Firebird cannot
+        # alter a column that is under a unique constraint, so the constraint
+        # is dropped and recreated around the change (three statements) - but
+        # the foreign key must still be untouched.
+        if connection.vendor == 'firebird':
+            self.assertEqual(len(cm.records), 3)
+            self.assertFalse(
+                any('FOREIGN KEY' in record.getMessage() for record in cm.records)
+            )
+        else:
+            self.assertEqual(len(cm.records), 1)
 
     @isolate_apps("schema")
     def test_unique_and_reverse_m2m(self):
@@ -3031,8 +3040,12 @@ class SchemaTests(TransactionTestCase):
         with self.assertLogs("django.db.backends.schema", "DEBUG") as cm:
             with connection.schema_editor() as editor:
                 editor.alter_field(Tag, Tag._meta.get_field("slug"), new_field)
-        # One SQL statement is executed to alter the field.
-        self.assertEqual(len(cm.records), 1)
+        # One SQL statement is executed to alter the field. On Firebird the
+        # unique constraint is dropped and recreated around the change.
+        if connection.vendor == 'firebird':
+            self.assertEqual(len(cm.records), 3)
+        else:
+            self.assertEqual(len(cm.records), 1)
         # Ensure that the field is still unique.
         Tag.objects.create(title="foo", slug="foo")
         with self.assertRaises(IntegrityError):
@@ -3061,11 +3074,18 @@ class SchemaTests(TransactionTestCase):
             Book,
             Book._meta.get_field("author").column,
         )
-        # Redundant foreign key index is not added.
+        # Redundant foreign key index is not added. The constraint is only
+        # actually created when the backend supports both partial indexes and
+        # expression indexes (the positional field reference makes it an
+        # expression constraint).
+        constraint_created = (
+            connection.features.supports_partial_indexes
+            and connection.features.supports_expression_indexes
+        )
         self.assertEqual(
             (
                 len(old_constraints) - 1
-                if connection.features.supports_partial_indexes
+                if constraint_created
                 else len(old_constraints)
             ),
             len(new_constraints),
@@ -4436,6 +4456,9 @@ class SchemaTests(TransactionTestCase):
         with self.assertRaises(DatabaseError):
             list(Thing.objects.all())
 
+    @unittest.skipIf(connection.vendor == 'firebird',
+                     'Firebird backend uppercases all identifiers, so mixed-case '
+                     'constraint names cannot round-trip.')
     def test_remove_constraints_capital_letters(self):
         """
         #23065 - Constraint names must be quoted if they contain capital letters.
@@ -4917,7 +4940,10 @@ class SchemaTests(TransactionTestCase):
                 db_table_comment = "Custom table comment"
 
         # Table comments are ignored on databases that don't support them.
-        with connection.schema_editor() as editor, self.assertNumQueries(1):
+        # (Firebird executes two extra statements for the primary key's
+        # sequence and trigger.)
+        expected_queries = 3 if connection.vendor == 'firebird' else 1
+        with connection.schema_editor() as editor, self.assertNumQueries(expected_queries):
             editor.create_model(ModelWithDbTableComment)
         self.isolated_local_models = [ModelWithDbTableComment]
         with connection.schema_editor() as editor, self.assertNumQueries(0):
