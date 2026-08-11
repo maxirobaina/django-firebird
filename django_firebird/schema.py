@@ -536,21 +536,29 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
             # delete unique constraint and generate sql to recreate later
             extra_sql = []
             model = old_field.model
-            column = self.quote_name(old_field.column)
-            unq_names = self._constraint_names(old_field.model, [old_field.column], unique=True)
-            for name in unq_names:
-                self.execute(self._delete_constraint_sql(self.sql_delete_unique, model, name))
-                params = {"table": model._meta.db_table, "name": name, "columns": self.quote_name(column),
-                          "nulls_distinct": '', "deferrable": ''}
-                extra_sql.append((self.sql_create_unique % params, [],))
+            if old_field.primary_key:
+                # A primary key's backing index reports RDB$UNIQUE_FLAG too;
+                # recreate it as a primary key, not as a plain UNIQUE.
+                for name in self._constraint_names(model, [old_field.column], primary_key=True):
+                    self.execute(self._delete_constraint_sql(self.sql_delete_pk, model, name))
+                extra_sql.append((self._create_primary_key_sql(model, new_field), []))
+            else:
+                unq_names = self._constraint_names(model, [old_field.column], unique=True)
+                for name in unq_names:
+                    self.execute(self._delete_constraint_sql(self.sql_delete_unique, model, name))
+                    params = {"table": self.quote_name(model._meta.db_table), "name": self.quote_name(name),
+                              "columns": self.quote_name(new_field.column),
+                              "nulls_distinct": '', "deferrable": ''}
+                    extra_sql.append((self.sql_create_unique % params, [],))
 
             if new_type != self.connection.data_types['TextField'] or new_type == self.connection.data_types[
                 'BinaryField']:
                 # alter column type
+                collate_sql = self._collate_sql(new_collation, old_collation, model._meta.db_table)
                 params = {
                     "column": self.quote_name(new_field.column),
                     "type": new_type,
-                    "collation": ' ' + self._collate_sql(new_collation) if new_collation else '',
+                    "collation": ' ' + collate_sql if collate_sql else '',
                 }
                 alter_sql = self.sql_alter_column_type % params
                 return ((alter_sql, [],), extra_sql,)
