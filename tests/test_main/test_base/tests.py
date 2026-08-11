@@ -211,7 +211,7 @@ class DateFunctionTests(TestCase):
         with self.assertRaisesMessage(ValueError, msg):
             list(DTModel.objects.annotate(truncated=Trunc('start_datetime', 'year', output_field=IntegerField())))
 
-        with self.assertRaisesMessage(AssertionError, "'name' isn't a DateField, TimeField, or DateTimeField."):
+        with self.assertRaisesMessage(TypeError, "'name' isn't a DateField, TimeField, or DateTimeField."):
             list(DTModel.objects.annotate(truncated=Trunc('name', 'year', output_field=DateTimeField())))
 
         with self.assertRaisesMessage(ValueError, "Cannot truncate DateField 'start_date' to DateTimeField"):
@@ -227,7 +227,7 @@ class DateFunctionTests(TestCase):
             list(DTModel.objects.annotate(truncated=Trunc('start_time', 'second', output_field=DateTimeField())))
 
         def test_datetime_kind(kind):
-            self.assertQuerysetEqual(
+            self.assertQuerySetEqual(
                 DTModel.objects.annotate(
                     truncated=Trunc('start_datetime', kind, output_field=DateTimeField())
                 ).order_by('start_datetime'),
@@ -239,7 +239,7 @@ class DateFunctionTests(TestCase):
             )
 
         def test_date_kind(kind):
-            self.assertQuerysetEqual(
+            self.assertQuerySetEqual(
                 DTModel.objects.annotate(
                     truncated=Trunc('start_date', kind, output_field=DateField())
                 ).order_by('start_datetime'),
@@ -251,7 +251,7 @@ class DateFunctionTests(TestCase):
             )
 
         def test_time_kind(kind):
-            self.assertQuerysetEqual(
+            self.assertQuerySetEqual(
                 DTModel.objects.annotate(
                     truncated=Trunc('start_time', kind, output_field=TimeField())
                 ).order_by('start_datetime'),
@@ -286,7 +286,7 @@ class DateFunctionTests(TestCase):
             end_datetime = timezone.make_aware(end_datetime, is_dst=False)
         self.create_model(start_datetime, end_datetime)
         self.create_model(end_datetime, start_datetime)
-        self.assertQuerysetEqual(
+        self.assertQuerySetEqual(
             DTModel.objects.annotate(extracted=TruncTime('start_datetime')).order_by('start_datetime'),
             [
                 (start_datetime.time()),

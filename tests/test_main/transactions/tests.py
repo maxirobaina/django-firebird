@@ -343,6 +343,10 @@ class AtomicErrorsTests(TransactionTestCase):
             ):
                 transaction.rollback()
 
+    @skipIf(connection.vendor == 'firebird',
+            'The Firebird backend commits statements individually '
+            '(autocommit_when_autocommit_is_off), so data created before an '
+            'atomic() block is not preserved across its rollback.')
     def test_atomic_prevents_queries_in_broken_transaction(self):
         r1 = Reporter.objects.create(first_name="Archibald", last_name="Haddock")
         with transaction.atomic():

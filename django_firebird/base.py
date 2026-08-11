@@ -1,6 +1,7 @@
 """
 Firebird database backend for Django.
 """
+import decimal
 
 try:
     import firebird.driver as Database
@@ -11,6 +12,7 @@ except ImportError as e:
 
 from firebird.driver import CHARSET_MAP, tpb, TPB, Isolation, TraAccessMode, TableShareMode, TableAccessMode
 
+from django.conf import settings
 from django.db import utils
 from django.db.backends.base.base import BaseDatabaseWrapper
 
@@ -96,8 +98,10 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         'endswith': "LIKE %s ESCAPE'\\'",
         'istartswith': "LIKE UPPER(%s) ESCAPE'\\'",  # 'STARTING WITH UPPER(%s)',
         'iendswith': "LIKE UPPER(%s) ESCAPE'\\'",
+        # Firebird has no regular expression support; SIMILAR TO implements
+        # SQL-standard patterns (full-match, no ^/$ anchors).
         'regex': "SIMILAR TO %s",
-        'iregex': "SIMILAR TO %s",  # Case Sensitive depends on collation
+        'iregex': "SIMILAR TO UPPER(%s)",
     }
 
     # The patterns below are used to generate SQL pattern lookup clauses when
@@ -109,13 +113,15 @@ class DatabaseWrapper(BaseDatabaseWrapper):
     # Note: we use str.format() here for readability as '%' is used as a wildcard for
     # the LIKE operator.
     pattern_esc = r"REPLACE(REPLACE(REPLACE({}, '\', '\\'), '%%', '\%%'), '_', '\_')"
+    # Firebird's LIKE has no default escape character, so the ESCAPE clause is
+    # required for the pattern_esc escaping to be effective.
     pattern_ops = {
-        'contains': "LIKE '%%' || {} || '%%'",
-        'icontains': "LIKE '%%' || UPPER({}) || '%%'",
-        'startswith': "LIKE {} || '%%'",
-        'istartswith': "LIKE UPPER({}) || '%%'",
-        'endswith': "LIKE '%%' || {}",
-        'iendswith': "LIKE '%%' || UPPER({})",
+        'contains': "LIKE '%%' || {} || '%%' ESCAPE '\\'",
+        'icontains': "LIKE '%%' || UPPER({}) || '%%' ESCAPE '\\'",
+        'startswith': "LIKE {} || '%%' ESCAPE '\\'",
+        'istartswith': "LIKE UPPER({}) || '%%' ESCAPE '\\'",
+        'endswith': "LIKE '%%' || {} ESCAPE '\\'",
+        'iendswith': "LIKE '%%' || UPPER({}) ESCAPE '\\'",
     }
 
     @staticmethod
@@ -181,6 +187,9 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         if 'TIME_ZONE' in settings_dict:
             conn_params['session_time_zone'] = settings_dict['TIME_ZONE']
         options = settings_dict['OPTIONS'].copy()
+        # Backend-only option: transaction lock wait timeout in seconds
+        # (-1, the server default, waits forever).
+        self._lock_timeout = options.pop('lock_timeout', -1)
         conn_params.update(options)
 
         self._db_charset = conn_params.get('charset')
@@ -204,8 +213,12 @@ class DatabaseWrapper(BaseDatabaseWrapper):
             self.features.supports_over_clause = True
             self.features.supports_partial_indexes = True
             self.features.supports_timezones = True
-            self.data_types['DateTimeField'] = 'timestamp with time zone'
-            self.data_types['TimeField'] = 'time with time zone'
+            if settings.USE_TZ:
+                # Only store time zones when Django uses aware datetimes;
+                # WITH TIME ZONE columns return aware values, which must not
+                # happen when USE_TZ is off.
+                self.data_types['DateTimeField'] = 'timestamp with time zone'
+                self.data_types['TimeField'] = 'time with time zone'
 
     @async_unsafe
     def close(self):
@@ -222,6 +235,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
             self.connection.begin(TPB(isolation=Isolation.READ_COMMITTED,
                                        access_mode=TraAccessMode.WRITE,
                                        auto_commit=False,
+                                       lock_timeout=getattr(self, '_lock_timeout', -1),
                                        ignore_limbo=True).get_buffer())
 
         cursor = self.connection.cursor()
@@ -603,7 +617,9 @@ class FirebirdCursorWrapper(object):
     This fixes it -- but note that if you want to use a literal "%s" in a query,
     you'll need to use "%%s".
     """
-    codes_for_integrityerror = (-803, -625, -530)
+    # -803: unique/PK violation, -625: validation error, -530: FK violation,
+    # -297: CHECK constraint violation.
+    codes_for_integrityerror = (-803, -625, -530, -297)
 
     def close(self, *args, **kwargs): # real signature unknown
         """ Closes the cursor. """
@@ -616,9 +632,15 @@ class FirebirdCursorWrapper(object):
 
     def execute(self, query, params=None):
         if params is None:
+            # Like other backends: no placeholder processing at all, the query
+            # is passed through verbatim (a literal % stays a literal %).
             params = []
-        try:
+            q = smart_str(query, self.encoding)
+        else:
             q = self.convert_query(query, len(params))
+            params = [int(p) if isinstance(p, decimal.Decimal) and p == p.to_integral_value() else p
+                      for p in params]
+        try:
             return self.cursor.execute(q, params)
         except Database.IntegrityError as e:
             raise utils.IntegrityError(*self.error_info(e, query, params))
@@ -650,8 +672,8 @@ class FirebirdCursorWrapper(object):
         # kinterbasdb tries to convert the passed SQL to string.
         # But if the connection charset is NONE, ASCII or OCTETS it will fail.
         # So we convert it to string first.
-        if num_params == 0:
-            return smart_str(query, self.encoding)
+        # %-format even with zero parameters so that '%%' escapes collapse to
+        # a literal '%' exactly as they do in parameterized queries.
         return smart_str(query % tuple("?" * num_params), self.encoding)
 
     def get_sql_code(self, e):

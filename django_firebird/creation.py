@@ -52,7 +52,9 @@ class DatabaseCreation(BaseDatabaseCreation):
             conn_params['password'] = settings_dict['PASSWORD']
         if 'ROLE' in settings_dict:
             conn_params['role'] = settings_dict['ROLE']
-        conn_params.update(settings_dict['OPTIONS'])
+        options = settings_dict['OPTIONS'].copy()
+        options.pop('lock_timeout', None)  # backend-only option, not a connect() argument
+        conn_params.update(options)
         conn_params.update(overrides)
         return conn_params
 

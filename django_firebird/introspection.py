@@ -1,5 +1,6 @@
 import datetime
 
+from django.db import DatabaseError
 from django.utils.encoding import force_str
 from django.db.models.indexes import Index
 from django.db.backends.base.introspection import (
@@ -52,20 +53,27 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         else:
             return force_str(value)
 
+    def identifier_converter(self, name):
+        """
+        Firebird stores unquoted identifiers in upper case. Report those in
+        lower case (Django's convention), but preserve the case of quoted,
+        mixed-case identifiers.
+        """
+        return name.lower() if name.isupper() else name
+
     def table_name_converter(self, name):
-        return name.lower()
+        return self.identifier_converter(name)
 
     def get_table_list(self, cursor):
         "Returns a list of table names in the current database."
         cursor.execute("""
             select
-                lower(trim(rdb$relation_name)),
+                trim(rdb$relation_name),
                 case when RDB$VIEW_BLR IS NULL then 't' else 'v' end as rel_type
             from rdb$relations
             where rdb$system_flag=0
             order by 1 """)
-        # return [r[0].strip().lower() for r in cursor.fetchall()]
-        return [TableInfo(row[0], row[1]) for row in cursor.fetchall()]
+        return [TableInfo(self.identifier_converter(row[0]), row[1]) for row in cursor.fetchall()]
 
     def get_table_description(self, cursor, table_name):
         """
@@ -75,7 +83,7 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         tbl_name = "'%s'" % table_name.upper()
         cursor.execute("""
             select
-              lower(trim(rf.rdb$field_name))
+              trim(rf.rdb$field_name)
               , case
                   when (f.rdb$field_type in (7,8,16)) and (f.rdb$field_sub_type > 0) then
                     160 + f.rdb$field_sub_type
@@ -95,12 +103,13 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
               , f.rdb$field_scale * -1
               , rf.rdb$null_flag
               , rf.rdb$default_source
-              , 
+              ,
               case
-                  when (rf.rdb$collation_id is NULL) then
-                    'NONE'
+                  when (coalesce(rf.rdb$collation_id, 0) = 0) then
+                    cast(null as varchar(63))
                   else
-                    (select c.rdb$collation_name from rdb$collations c where c.rdb$collation_id = f.rdb$collation_id 
+                    (select trim(trailing from c.rdb$collation_name) from rdb$collations c
+                        where c.rdb$collation_id = rf.rdb$collation_id
                         and c.rdb$character_set_id = f.rdb$character_set_id)
                   end as coll_name
             from
@@ -113,8 +122,11 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         items = []
         for r in cursor.fetchall():
             # name type_code display_size internal_size precision scale null_ok + default
-            items.append(FieldInfo(name=r[0], type_code=r[1], display_size=r[2], internal_size=r[2] or 0, precision=r[3],
+            items.append(FieldInfo(name=self.identifier_converter(r[0]), type_code=r[1], display_size=r[2],
+                                   internal_size=r[2] or 0, precision=r[3],
                                    scale=r[4], null_ok=not (r[5] == 1), default=r[6], collation=r[7]))
+        if not items:
+            raise DatabaseError("Table %s does not exist" % table_name)
         return items
 
     def get_sequences(self, cursor, table_name, table_fields=()):
@@ -246,8 +258,9 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
             elif constraint_type == 'UNIQUE':
                 unique = True
             elif constraint_type == 'FOREIGN KEY':
+                # The implicit index that backs the constraint is not reported
+                # separately (like on PostgreSQL); an FK entry has index=False.
                 foreign_key = (other_table, other_column,)
-                index = True
             elif constraint_type == 'INDEX':
                 index = True
 

@@ -1,9 +1,10 @@
 import math
+import unittest
 from decimal import Decimal
 
 from django.core import validators
 from django.core.exceptions import ValidationError
-from django.db import models
+from django.db import connection, models
 from django.test import TestCase
 
 from .models import BigD, Foo
@@ -86,6 +87,9 @@ class DecimalFieldTests(TestCase):
         big_decimal.refresh_from_db()
         self.assertEqual(big_decimal.d, Decimal(".100000000000000000000000000005"))
 
+    @unittest.skipIf(connection.vendor == 'firebird',
+                     'firebird-driver rejects parameters that exceed the range of the '
+                     'scaled NUMERIC column instead of returning no rows.')
     def test_lookup_really_big_value(self):
         """
         Really big values can be used in a filter statement.

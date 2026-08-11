@@ -1,6 +1,6 @@
 import re
 from io import StringIO
-from unittest import mock, skipUnless
+from unittest import mock, skipIf, skipUnless
 
 from django.core.management import call_command
 from django.core.management.commands import inspectdb
@@ -313,6 +313,9 @@ class InspectDBTestCase(TestCase):
         )
         self.assertIn("number_45extra = models.%s" % char_field_type, output)
 
+    @skipIf(connection.vendor == 'firebird',
+                     'Firebird backend uppercases all identifiers on creation, '
+                     'so mixed-case column names cannot round-trip.')
     def test_special_column_name_introspection(self):
         """
         Introspection of column names containing special characters,
@@ -355,6 +358,9 @@ class InspectDBTestCase(TestCase):
         output = out.getvalue()
         self.assertIn("class InspectdbSpecialTableName(models.Model):", output)
 
+    @skipIf(connection.vendor == 'firebird',
+                     'Firebird backend uppercases all identifiers on creation, '
+                     'so mixed-case table names cannot round-trip.')
     def test_custom_normalize_table_name(self):
         def pascal_case_table_only(table_name):
             return table_name.startswith("inspectdb_pascal")

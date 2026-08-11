@@ -13,6 +13,40 @@ v5.0.0 (in development)
 + Use the native BOOLEAN type for BooleanField without a check constraint;
   Firebird 3+ does not need the smallint emulation and the constraint
   triggered a Firebird 3.0.x bug when dropping columns #154
++ Modernize the test suite for Django 5.x: drop index_together and pytz
+  usage, sync stale tests with upstream Django 5.2, create contrib app
+  tables with sync_apps (MIGRATION_MODULES=None) so cross-app foreign keys
+  resolve, and add documented skips for genuine Firebird limitations
++ Introspection fixes: preserve the case of quoted identifiers, report no
+  collation for columns using the character set default, raise DatabaseError
+  for missing tables, stop reporting foreign key constraints as indexes,
+  and declare introspected_field_types for sequence-based auto fields
++ Fix week truncation in date/datetime trunc SQL (previous formula produced
+  dates in the wrong month and shifted Sundays to the next week)
++ Rewrite duration expression support: DATEADD-based datetime +/- duration
+  arithmetic with millisecond fractions, plain bigint arithmetic for
+  duration-only expressions
++ Use standard OFFSET/FETCH row limiting (Firebird 3+) via
+  DatabaseOperations.limit_offset_sql and drop the custom compiler SQL
+  surgery
++ Register as_firebird handlers: inline plain literal Values (fixes
+  "Data type unknown" for parameter-only expressions), CASE WHEN rendering
+  for boolean-to-integer casts, TRIM for CASE over string literals (CHAR
+  blank padding), and REPEAT emulation via RPAD
++ LIKE lookups on expressions now include an ESCAPE clause, and iregex is
+  case-insensitive via UPPER
++ %-escapes in parameterless queries collapse correctly ('%%' -> '%')
++ Map CHECK constraint violations (SQLCODE -297) to IntegrityError
++ last_executed_query() now interpolates parameters for debugging
++ WITH TIME ZONE column types are only used when USE_TZ is enabled
++ sql_flush deletes tables in foreign key dependency order
++ New 'lock_timeout' entry in OPTIONS sets the transaction lock wait
+  timeout in seconds (default: wait forever)
++ Known issue: Firebird 6 development builds ignore ORDER BY on DISTINCT
+  queries filtered with IN (subquery); many_to_one.test_selects is skipped
+  on Firebird 6 until this is fixed upstream
++ Known issue: the schema app tests now run (no more hangs with
+  lock_timeout set) but still have failures to work through
 
 
 v1.11.0

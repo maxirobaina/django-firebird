@@ -2,7 +2,7 @@ import collections.abc
 from datetime import datetime
 from math import ceil
 from operator import attrgetter
-from unittest import skipUnless
+from unittest import skipIf, skipUnless
 
 from django.core.exceptions import FieldError
 from django.db import connection, models
@@ -825,7 +825,7 @@ class LookupTests(TestCase):
     def test_relation_nested_lookup_error(self):
         # An invalid nested lookup on a related field raises a useful error.
         msg = (
-            "Unsupported lookup 'editor' for ForeignKey or join on the field not "
+            "Unsupported lookup 'editor__name' for ForeignKey or join on the field not "
             "permitted."
         )
         with self.assertRaisesMessage(FieldError, msg):
@@ -862,6 +862,9 @@ class LookupTests(TestCase):
                 Author.objects.filter(article__abs=self.a1.pk), [self.au1]
             )
 
+    @skipIf(connection.vendor == 'firebird',
+            'Firebird has no regular expression support; __regex uses SQL '
+            'SIMILAR TO, whose semantics (full-match, no anchors) differ.')
     def test_regex(self):
         # Create some articles with a bit more interesting headlines for
         # testing field lookups.
@@ -1059,6 +1062,10 @@ class LookupTests(TestCase):
         )
         with self.assertRaisesMessage(FieldError, msg):
             Article.objects.filter(headline__blahblah=99)
+        msg = (
+            "Unsupported lookup 'blahblah__exact' for CharField or join "
+            "on the field not permitted."
+        )
         with self.assertRaisesMessage(FieldError, msg):
             Article.objects.filter(headline__blahblah__exact=99)
         msg = (

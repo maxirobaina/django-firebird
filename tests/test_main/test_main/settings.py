@@ -13,7 +13,7 @@ DATABASES = {
         'PASSWORD': 'masterkey',
         'HOST': DB_HOST,
         'PORT': '',
-        'OPTIONS': {'charset': 'UTF8'},
+        'OPTIONS': {'charset': 'UTF8', 'lock_timeout': 5},
 
         'TEST': {
             'NAME': 'django-test-default',
@@ -29,7 +29,7 @@ DATABASES = {
         'PASSWORD': 'masterkey',
         'HOST': DB_HOST,
         'PORT': '',
-        'OPTIONS': {'charset': 'UTF8'},
+        'OPTIONS': {'charset': 'UTF8', 'lock_timeout': 5},
 
         'TEST': {
             'NAME': 'django-test-other',
@@ -42,6 +42,17 @@ DATABASES = {
 }
 
 DEFAULT_AUTO_FIELD = 'django.db.models.AutoField'
+
+# Create the contrib apps' tables with sync_apps instead of running their
+# migrations. The test apps have no migrations, so this keeps every table in
+# the same creation pass and lets cross-app foreign keys (e.g. model_fields ->
+# contenttypes) resolve during test database setup.
+MIGRATION_MODULES = {
+    'auth': None,
+    'contenttypes': None,
+    'sessions': None,
+    'sites': None,
+}
 
 # Local time zone for this installation. Choices can be found here:
 # http://en.wikipedia.org/wiki/List_of_tz_zones_by_name

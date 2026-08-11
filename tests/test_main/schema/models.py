@@ -68,7 +68,7 @@ class AuthorWithIndexedNameAndBirthday(models.Model):
 
     class Meta:
         apps = new_apps
-        index_together = [['name', 'birthday']]
+        indexes = [models.Index(fields=['name', 'birthday'])]
 
 
 class AuthorWithUniqueNameAndBirthday(models.Model):
@@ -186,7 +186,7 @@ class TagIndexed(models.Model):
 
     class Meta:
         apps = new_apps
-        index_together = [["slug", "title"]]
+        indexes = [models.Index(fields=["slug", "title"])]
 
 
 class TagM2MTest(models.Model):

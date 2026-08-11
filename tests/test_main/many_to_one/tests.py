@@ -2,7 +2,7 @@ import datetime
 from copy import deepcopy
 
 from django.core.exceptions import FieldError, MultipleObjectsReturned
-from django.db import IntegrityError, models, transaction
+from django.db import IntegrityError, connection, models, transaction
 from django.test import TestCase
 from django.utils.deprecation import RemovedInDjango60Warning
 from django.utils.translation import gettext_lazy
@@ -227,6 +227,11 @@ class ManyToOneTests(TestCase):
         self.assertTrue(Parent.bestchild.is_cached(parent))
 
     def test_selects(self):
+        if connection.vendor == 'firebird' and int(connection.ops.firebird_version[3]) >= 6:
+            self.skipTest(
+                'Firebird 6 development builds ignore ORDER BY on DISTINCT '
+                'queries filtered with IN (subquery).'
+            )
         new_article1 = self.r.article_set.create(
             headline="John's second story",
             pub_date=datetime.date(2005, 7, 29),

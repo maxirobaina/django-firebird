@@ -68,3 +68,20 @@ class DatabaseFeatures(BaseDatabaseFeatures):
     @cached_property
     def supports_transactions(self):
         return True
+
+    @cached_property
+    def introspected_field_types(self):
+        # Auto fields are implemented with sequences and triggers, positive
+        # integer fields with check constraints, and durations as bigint, so
+        # they all introspect as their plain column types.
+        return {
+            **super().introspected_field_types,
+            'AutoField': 'IntegerField',
+            'BigAutoField': 'BigIntegerField',
+            'SmallAutoField': 'SmallIntegerField',
+            'PositiveBigIntegerField': 'BigIntegerField',
+            'PositiveIntegerField': 'IntegerField',
+            'PositiveSmallIntegerField': 'SmallIntegerField',
+            'DurationField': 'BigIntegerField',
+            'GenericIPAddressField': 'CharField',
+        }

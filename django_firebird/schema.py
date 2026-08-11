@@ -1030,7 +1030,9 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
                 if tr.is_active():
                     tr.commit()
             # Transaction Context Manager automatically commit statement
-            with transaction(self.connection.connection.transaction_manager()) as tr:
+            from firebird.driver import TPB
+            tpb = TPB(lock_timeout=getattr(self.connection, '_lock_timeout', -1)).get_buffer()
+            with transaction(self.connection.connection.transaction_manager(default_tpb=tpb)) as tr:
                 try:
                     cur = tr.cursor()
                     cur.execute(str(sql), params)

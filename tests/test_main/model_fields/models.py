@@ -95,7 +95,7 @@ class Choiceful(models.Model):
 
 
 class BigD(models.Model):
-    d = models.DecimalField(max_digits=18, decimal_places=10)
+    d = models.DecimalField(max_digits=32, decimal_places=30)
 
 
 class FloatModel(models.Model):

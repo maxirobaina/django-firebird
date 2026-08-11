@@ -137,7 +137,9 @@ class DatabaseOperations(BaseDatabaseOperations):
         elif lookup_type == 'month':
             sql = f"EXTRACT(year FROM {sql})||'-'||EXTRACT(month FROM {sql})||'-01'"
         elif lookup_type == 'week':
-            sql = (f"EXTRACT(year FROM {sql})||'-'||EXTRACT(month FROM {sql})||'-'||EXTRACT(day FROM DATEADD(1-EXTRACT(WEEKDAY FROM {sql}) DAY TO {sql}))")
+            # Truncate to the preceding Monday. Firebird's WEEKDAY runs
+            # Sunday=0..Saturday=6, so Monday lies (WEEKDAY+6) mod 7 days back.
+            return (f"CAST(DATEADD(-MOD(EXTRACT(WEEKDAY FROM {sql}) + 6, 7) DAY TO {sql}) AS DATE)", params)
         elif lookup_type == 'day':
             sql = f"EXTRACT(year FROM {sql})||'-'||EXTRACT(month FROM {sql})||'-'||EXTRACT(day FROM {sql})"
         return f"CAST({sql} AS DATE)", params
@@ -172,7 +174,6 @@ class DatabaseOperations(BaseDatabaseOperations):
         """
         year = f"EXTRACT(year FROM {sql})"
         month = f"EXTRACT(month FROM {sql})"
-        week = f"EXTRACT(DAY FROM DATEADD(-EXTRACT(WEEKDAY FROM {sql}) + 1 DAY TO {sql}))"
         day = f"EXTRACT(day FROM {sql})"
         hh = f"EXTRACT(hour FROM {sql})"
         mm = f"EXTRACT(minute FROM {sql})"
@@ -182,7 +183,9 @@ class DatabaseOperations(BaseDatabaseOperations):
         elif lookup_type == 'month':
             sql = "%s||'-'||%s||'-01 00:00:00'" % (year, month)
         elif lookup_type == 'week':
-            sql = "%s||'-'||%s||'-'||%s||' 00:00:00'" % (year, month, week)
+            # Truncate to midnight of the preceding Monday (WEEKDAY runs
+            # Sunday=0..Saturday=6).
+            return (f"CAST(CAST(DATEADD(-MOD(EXTRACT(WEEKDAY FROM {sql}) + 6, 7) DAY TO {sql}) AS DATE) AS TIMESTAMP)", params)
         elif lookup_type == 'day':
             sql = "%s||'-'||%s||'-'||%s||' 00:00:00'" % (year, month, day)
         elif lookup_type == 'hour':
@@ -220,9 +223,35 @@ class DatabaseOperations(BaseDatabaseOperations):
         return "CAST(%s AS TIME)" % fields[lookup_type], params
 
     def lookup_cast(self, lookup_type, internal_type=None):
-        if lookup_type in ('iexact', 'icontains', 'istartswith', 'iendswith'):
+        if lookup_type in ('iexact', 'icontains', 'istartswith', 'iendswith', 'iregex'):
             return "UPPER(%s)"
         return "%s"
+
+    def last_executed_query(self, cursor, sql, params):
+        """
+        Return the query with parameter values substituted, for debugging and
+        CaptureQueriesContext. The result is an approximation of the executed
+        statement; parameters are bound server-side.
+        """
+        if params:
+            if isinstance(params, (list, tuple)):
+                params = tuple(self._quote_query_param(p) for p in params)
+            elif isinstance(params, dict):
+                params = {k: self._quote_query_param(v) for k, v in params.items()}
+            try:
+                return force_str(sql) % params
+            except TypeError:
+                pass
+        return force_str(sql)
+
+    def _quote_query_param(self, param):
+        if isinstance(param, str):
+            return "'%s'" % param.replace("'", "''")
+        if isinstance(param, (datetime.date, datetime.time, datetime.datetime)):
+            return "'%s'" % param
+        if isinstance(param, bytes):
+            return "<binary>"
+        return param
 
     def for_update_sql(self, nowait=False, skip_locked=False, of=(), no_key=False):
         """
@@ -261,6 +290,14 @@ class DatabaseOperations(BaseDatabaseOperations):
 
     def no_limit_value(self):
         return None
+
+    def limit_offset_sql(self, low_mark, high_mark):
+        """SQL:2008 OFFSET/FETCH, supported since Firebird 3."""
+        limit, offset = self._get_limit_offset_params(low_mark, high_mark)
+        return ' '.join(sql for sql in (
+            ('OFFSET %d ROWS' % offset) if offset else None,
+            ('FETCH FIRST %d ROWS ONLY' % limit) if limit else None,
+        ) if sql)
 
     def get_db_converters(self, expression):
         """
@@ -358,59 +395,43 @@ class DatabaseOperations(BaseDatabaseOperations):
             return 'BIN_XOR(%s)' % ','.join(sub_expressions)
         return super(DatabaseOperations, self).combine_expression(connector, sub_expressions)
 
+    # Marker appended by format_for_duration_arithmetic() so that
+    # combine_duration_expression() can tell duration operands (bigint
+    # microseconds) apart from datetime operands.
+    _duration_marker = ' MICROSECOND'
+
     def combine_duration_expression(self, connector, sub_expressions):
-        if connector not in ['+', '-']:
+        marker = self._duration_marker
+
+        def is_duration(sql):
+            return sql.endswith(marker)
+
+        def strip(sql):
+            return sql[:-len(marker)] if is_duration(sql) else sql
+
+        lhs, rhs = sub_expressions
+        if connector in ('*', '/') or (is_duration(lhs) and is_duration(rhs)):
+            # duration-with-scalar or duration-with-duration arithmetic works
+            # directly on the microsecond values.
+            return '(%s) %s (%s)' % (strip(lhs), connector, strip(rhs))
+        if connector not in ('+', '-'):
             raise DatabaseError('Invalid connector for timedelta: %s.' % connector)
-
-        sign = 1 if connector == '+' else -1
-        sql, timedelta = sub_expressions
-
-        """
-        sql, timedelta can be either:
-            - An integer number of microseconds
-            - A string representing a timedelta object
-            - A string representing a datetime
-
-        """
-        if isinstance(sql, datetime.timedelta):
-            # normalize to sql + duration
-            sql, timedelta = timedelta, sql
-
-        if isinstance(timedelta, datetime.timedelta):
-            if timedelta.days:
-                unit = 'day'
-                value = timedelta.days * sign
-            elif timedelta.seconds:
-                unit = 'second'
-                value = ((timedelta.days * 86400) + timedelta.seconds) * sign
-            elif timedelta.microseconds:
-                unit = 'millisecond'
-                value = timedelta.microseconds * sign
-            else:
-                unit = 'second'
-                value = 0
-        elif isinstance(timedelta, int):
-            unit = 'second'
-            value = str((decimal.Decimal(timedelta) * sign) / decimal.Decimal(1000000))
-        elif isinstance(timedelta, str):
-            if timedelta.isdigit() or not "timestamp".casefold() in timedelta.casefold():
-                unit = 'millisecond'
-                value = "(cast (%s as bigint) * %s) / 1000" % (timedelta, sign,)
-            elif not "timestamp".casefold() in sql.casefold() and not timedelta.isdigit():
-                unit = 'millisecond'
-                value = "(cast (%s as bigint) * %s) / 1000" % (sql, sign,)
-                return 'DATEADD(%s %s TO %s)' % (value, unit, timedelta)
-            else:
-                return super().combine_duration_expression(connector, sub_expressions)
+        if is_duration(rhs):
+            timestamp, duration = lhs, strip(rhs)
+        elif is_duration(lhs):
+            if connector == '-':
+                raise DatabaseError('Cannot subtract a datetime from a duration.')
+            timestamp, duration = rhs, strip(lhs)
         else:
-            unit = 'second'
-            value = timedelta
-
-        return 'DATEADD(%s %s TO %s)' % (value, unit, sql)
+            return self.combine_expression(connector, sub_expressions)
+        sign = '-' if connector == '-' else ''
+        # Fractional milliseconds carry the value down to the server's
+        # timestamp resolution of 100 microseconds.
+        return 'DATEADD(%s(CAST(%s AS BIGINT))/1000.0 MILLISECOND TO %s)' % (
+            sign, duration, timestamp)
 
     def format_for_duration_arithmetic(self, sql):
-        """Do nothing here, we will handle it in the custom function."""
-        return sql
+        return '%s%s' % (sql, self._duration_marker)
 
     def year_lookup_bounds_for_datetime_field(self, value, iso_year=False):
         first = '%s-01-01 00:00:00' % value
@@ -562,6 +583,9 @@ class DatabaseOperations(BaseDatabaseOperations):
         if not tables:
             return []
 
+        # Firebird cannot temporarily disable foreign key checks, so delete
+        # from referencing tables before the tables they reference.
+        tables = self._flush_table_order(tables)
         sql = ['%s %s %s;' %
                (style.SQL_KEYWORD('DELETE'),
                 style.SQL_KEYWORD('FROM'),
@@ -577,6 +601,37 @@ class DatabaseOperations(BaseDatabaseOperations):
                 )
                 sql.append(query)
         return sql
+
+    def _flush_table_order(self, tables):
+        """
+        Order tables so that every table comes before the tables it references
+        with a foreign key (self-references are ignored). Cycles keep their
+        input order.
+        """
+        depends = {}
+        with self.connection.cursor() as cursor:
+            for table in tables:
+                try:
+                    relations = self.connection.introspection.get_relations(cursor, table)
+                except Exception:
+                    relations = {}
+                depends[table] = {ref_table for _, ref_table in relations.values()
+                                  if ref_table in tables and ref_table != table}
+        ordered = []
+        remaining = list(tables)
+        while remaining:
+            acyclic = False
+            for table in list(remaining):
+                # A table can be deleted once no remaining table references it.
+                if not any(table in depends[other] for other in remaining if other != table):
+                    ordered.append(table)
+                    remaining.remove(table)
+                    acyclic = True
+            if not acyclic:
+                # Reference cycle: fall back to input order for the rest.
+                ordered.extend(remaining)
+                break
+        return ordered
 
     def drop_sequence_sql(self, table):
         return 'DROP SEQUENCE %s' % self.get_sequence_name(table)
