@@ -1,4 +1,3 @@
-from django.db.models import NullBooleanField
 from django.utils.functional import cached_property
 from django.db.backends.base.features import BaseDatabaseFeatures
 
@@ -34,7 +33,6 @@ class DatabaseFeatures(BaseDatabaseFeatures):
     supports_column_check_constraints = False
 
     can_introspect_foreign_keys = True
-    can_introspect_boolean_field = False
     can_introspect_small_integer_field = True
 
     # If NULL is implied on columns without needing to be explicitly specified
@@ -70,23 +68,3 @@ class DatabaseFeatures(BaseDatabaseFeatures):
     @cached_property
     def supports_transactions(self):
         return True
-
-    def introspected_boolean_field_type(self, field=None, created_separately=False):
-        """
-        What is the type returned when the backend introspects a BooleanField?
-        The optional arguments may be used to give further details of the field to be
-        introspected; in particular, they are provided by Django's test suite:
-        field -- the field definition
-        created_separately -- True if the field was added via a SchemaEditor's AddField,
-                              False if the field was created with the model
-
-        Note that return value from this function is compared by tests against actual
-        introspection results; it should provide expectations, not run an introspection
-        itself.
-        """
-        if int(self.connection.ops.firebird_version[4]) >= 3:
-            if isinstance(field, NullBooleanField):
-                return 'BooleanField(blank=True, null=True)'
-            else:
-                return 'BooleanField'
-        return 'SmallIntegerField'

@@ -10,6 +10,9 @@ v5.0.0 (in development)
 + Adapt test database creation to the firebird-driver 2.x API
   (no host/port/page_size arguments; DSN plus driver_config instead)
 + Remove index_together handling from the schema editor (removed in Django 5.1)
++ Use the native BOOLEAN type for BooleanField without a check constraint;
+  Firebird 3+ does not need the smallint emulation and the constraint
+  triggered a Firebird 3.0.x bug when dropping columns #154
 
 
 v1.11.0

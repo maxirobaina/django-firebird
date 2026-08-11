@@ -836,9 +836,8 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         return FirebirdColumns(table, columns, self.quote_name, col_suffixes)
 
     def prepare_default(self, value):
-        # If the major server version is less than 3 then use `smallint` for the boolean field
-        if isinstance(value, bool) and int(self.connection.ops.firebird_version[4]) < 3:
-            return "1" if value else "0"
+        if isinstance(value, bool):
+            return "TRUE" if value else "FALSE"
         s = force_str(value)
         return self.quote_value(s)
 
@@ -854,7 +853,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         elif isinstance(value, str):
             return repr(value)
         elif isinstance(value, bool):
-            return "1" if value else "0"
+            return "TRUE" if value else "FALSE"
         elif value is None:
             return "NULL"
         else:

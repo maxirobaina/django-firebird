@@ -49,7 +49,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         'AutoField': 'integer',
         'BigAutoField': 'bigint',
         'BinaryField': 'blob sub_type 0',
-        'BooleanField': 'smallint',  # for firebird 3 it changes in init_connection_state
+        'BooleanField': 'boolean',
         'CharField': 'varchar(%(max_length)s)',
         'CommaSeparatedIntegerField': 'varchar(%(max_length)s)',
         'DateField': 'date',
@@ -63,7 +63,6 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         'BigIntegerField': 'bigint',
         'IPAddressField': 'char(15)',
         'GenericIPAddressField': 'char(39)',
-        'NullBooleanField': 'smallint',  # for firebird 3 it changes in init_connection_state
         'OneToOneField': 'integer',
         'PositiveBigIntegerField': 'bigint',
         'PositiveIntegerField': 'integer',
@@ -76,9 +75,10 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         'UUIDField': 'char(32)',
     }
 
+    # Firebird 3+ has a native BOOLEAN type, so no check constraint is needed
+    # to emulate it. It also avoids a Firebird 3.0.x bug when dropping columns
+    # that have a check constraint (#154).
     data_type_check_constraints = {
-        'BooleanField': '%(qn_column)s IN (0,1)',  # for firebird 3 it changes in init_connection_state
-        'NullBooleanField': '(%(qn_column)s IN (0,1)) OR (%(qn_column)s IS NULL)',
         'PositiveIntegerField': '%(qn_column)s >= 0',
         'PositiveSmallIntegerField': '%(qn_column)s >= 0',
     }
@@ -200,12 +200,6 @@ class DatabaseWrapper(BaseDatabaseWrapper):
 
     def init_connection_state(self):
         """Initializes the database connection settings."""
-        if int(self.ops.firebird_version[3]) >= 3:
-            self.data_types['BooleanField'] = 'boolean'
-            self.data_types['NullBooleanField'] = 'boolean'
-            self.data_type_check_constraints['BooleanField'] = '%(qn_column)s IN (False,True)'
-            self.data_type_check_constraints[
-                'NullBooleanField'] = '(%(qn_column)s IN (False,True)) OR (%(qn_column)s IS NULL)'
         if int(self.ops.firebird_version[3]) >= 4:
             self.features.supports_over_clause = True
             self.features.supports_partial_indexes = True
