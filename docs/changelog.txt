@@ -17,6 +17,9 @@ v5.1.0 (in development)
 + Firebird 3: DecimalField columns above the server's 18 digit precision
   limit are created clamped to 18 digits (keeping the integer digits), and
   supports_high_precision_decimals gates the affected tests
++ Declare has_zoneinfo_database only for Firebird 4+ (no AT TIME ZONE
+  on Firebird 3), so time-zone-aware queries fail loudly instead of
+  silently skipping the conversion
 + CI installs the Firebird 5 client library from the server image; the
   distribution's Firebird 3 era libfbclient2 cannot describe the
   INT128-backed NUMERIC types returned by Firebird 4+ servers

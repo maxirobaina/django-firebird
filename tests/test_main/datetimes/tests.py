@@ -1,7 +1,7 @@
 import datetime
 
 
-from django.test import TestCase, override_settings
+from django.test import TestCase, override_settings, skipUnlessDBFeature
 from django.utils import timezone
 
 from .models import Article, Category, Comment
@@ -90,6 +90,7 @@ class DateTimesTests(TestCase):
         )
 
     @override_settings(USE_TZ=True)
+    @skipUnlessDBFeature('has_zoneinfo_database')
     def test_21432(self):
         now = timezone.localtime(timezone.now().replace(microsecond=0))
         Article.objects.create(title="First one", pub_date=now)
