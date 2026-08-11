@@ -45,9 +45,17 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install Firebird client library
+        # Ubuntu's libfbclient2 is a Firebird 3 era client that cannot
+        # describe the INT128-backed NUMERIC types of Firebird 4+ servers,
+        # so use the (backward compatible) client from the Firebird 5 image.
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libfbclient2
+          sudo apt-get install -y --no-install-recommends libtommath1
+          id=$(docker create firebirdsql/firebird:5)
+          sudo mkdir -p /opt/firebird-client
+          sudo docker cp "$id":/opt/firebird/lib/. /opt/firebird-client/
+          docker rm "$id"
+          echo "FIREBIRD_CLIENT_LIB=/opt/firebird-client/libfbclient.so.2" >> "$GITHUB_ENV"
 
       - name: Install package and Django
         run: |

@@ -13,6 +13,13 @@ DB_NAME = os.environ.get('FIREBIRD_DATABASE', 'django-test-default')
 DB_NAME_OTHER = os.environ.get('FIREBIRD_DATABASE_OTHER', 'django-test-other')
 DB_LOCK_TIMEOUT = int(os.environ.get('FIREBIRD_LOCK_TIMEOUT', '5'))
 
+# Optional explicit client library (CI uses the one shipped in the server
+# image instead of the distribution's older libfbclient2).
+_client_lib = os.environ.get('FIREBIRD_CLIENT_LIB')
+if _client_lib:
+    from firebird.driver import driver_config
+    driver_config.fb_client_library.value = _client_lib
+
 DATABASES = {
     'default': {
         'ENGINE': 'django_firebird',

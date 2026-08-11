@@ -5,7 +5,7 @@ from decimal import Decimal
 from django.core import validators
 from django.core.exceptions import ValidationError
 from django.db import connection, models
-from django.test import TestCase
+from django.test import TestCase, skipUnlessDBFeature
 
 from .models import BigD, Foo
 
@@ -82,6 +82,7 @@ class DecimalFieldTests(TestCase):
             with self.subTest(value), self.assertRaisesMessage(ValidationError, msg):
                 BigD.objects.create(d=value)
 
+    @skipUnlessDBFeature('supports_high_precision_decimals')
     def test_fetch_from_db_without_float_rounding(self):
         big_decimal = BigD.objects.create(d=Decimal(".100000000000000000000000000005"))
         big_decimal.refresh_from_db()

@@ -209,6 +209,11 @@ class DatabaseWrapper(BaseDatabaseWrapper):
 
     def init_connection_state(self):
         """Initializes the database connection settings."""
+        if self.ops.firebird_main_version < 4:
+            self.data_types = dict(
+                self.data_types,
+                DecimalField=ClampedDecimalType(self.data_types['DecimalField']),
+            )
         if self.ops.firebird_main_version >= 4:
             self.features.supports_over_clause = True
             self.features.supports_partial_indexes = True
@@ -706,6 +711,21 @@ class DatabaseWrapper(BaseDatabaseWrapper):
                 self.cursor()
             self._server_version = self.connection.info.server_version
         return self._server_version
+
+
+class ClampedDecimalType(str):
+    """
+    Column type format that caps NUMERIC/DECIMAL precision at Firebird 3's
+    limit of 18 digits while keeping the field's integer digits.
+    """
+    def __mod__(self, params):
+        params = dict(params)
+        digits = int(params['max_digits'])
+        places = int(params['decimal_places'])
+        if digits > 18:
+            params['max_digits'] = 18
+            params['decimal_places'] = max(18 - (digits - places), 0)
+        return str.__mod__(str(self), params)
 
 
 class FirebirdCursorWrapper(object):
