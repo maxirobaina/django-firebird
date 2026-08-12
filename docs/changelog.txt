@@ -1,6 +1,10 @@
 Changelog
 =========
 
+v5.2.0 (in development)
+-----------------------
+
+
 v5.1.0 (2026-08-12)
 -------------------
 + Django 6.1 support on master (Django 5.2 remains supported on the
