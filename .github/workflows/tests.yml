@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.12', '3.13']
+        python-version: ['3.12', '3.13', '3.14']
         firebird-version: ['3', '4', '5', '6-snapshot']
 
     name: "Python ${{ matrix.python-version }} / Firebird ${{ matrix.firebird-version }}"
