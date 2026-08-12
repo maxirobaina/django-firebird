@@ -3,6 +3,10 @@ Changelog
 
 v5.1.0 (in development)
 -----------------------
++ Fix Firebird 6 collation changes on primary key columns: quoted
+  identifiers in the recreated constraint, the primary key is recreated
+  as a primary key (not a plain UNIQUE), and removing a collation
+  resets the column to the character set default
 
 
 v5.0.3 (2026-08-11)
