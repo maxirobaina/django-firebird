@@ -3,6 +3,8 @@ import logging
 import datetime
 import re
 
+import django
+
 from django.apps.registry import Apps
 from django.conf import settings
 from django.db.backends.utils import split_identifier
@@ -11,6 +13,7 @@ from django.db.models.sql import Query
 from django.utils.encoding import force_str
 from django.db.models import Index
 from django.db.models.fields import AutoField, CharField, BinaryField
+from django.db.models.fields.composite import CompositePrimaryKey
 from django.db.backends.base.schema import BaseDatabaseSchemaEditor
 from django.db.backends.base.schema import _related_non_m2m_objects, _is_relevant_relation
 
@@ -41,9 +44,22 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
     sql_alter_column_type = "ALTER %(column)s TYPE %(type)s%(collation)s"
     sql_delete_column = "ALTER TABLE %(table)s DROP %(column)s"
     sql_rename_column = "ALTER TABLE %(table)s ALTER %(old_column)s TO %(new_column)s"
-    sql_create_fk = "ALTER TABLE %(table)s ADD CONSTRAINT %(name)s FOREIGN KEY (%(column)s) REFERENCES %(to_table)s (%(to_column)s)"
-    # Columns added with ALTER TABLE ADD can carry their FK inline.
-    sql_create_column_inline_fk = "CONSTRAINT %(name)s REFERENCES %(to_table)s (%(to_column)s)%(deferrable)s"
+    if django.VERSION >= (6, 1):
+        # Django 6.1 passes %(on_delete_db)s (database-level on_delete);
+        # Firebird supports ON DELETE CASCADE / SET NULL / SET DEFAULT.
+        sql_create_fk = (
+            "ALTER TABLE %(table)s ADD CONSTRAINT %(name)s FOREIGN KEY (%(column)s) "
+            "REFERENCES %(to_table)s (%(to_column)s)%(on_delete_db)s"
+        )
+        # Columns added with ALTER TABLE ADD can carry their FK inline.
+        sql_create_column_inline_fk = (
+            "CONSTRAINT %(name)s REFERENCES %(to_table)s (%(to_column)s)"
+            "%(on_delete_db)s%(deferrable)s"
+        )
+    else:
+        sql_create_fk = "ALTER TABLE %(table)s ADD CONSTRAINT %(name)s FOREIGN KEY (%(column)s) REFERENCES %(to_table)s (%(to_column)s)"
+        # Columns added with ALTER TABLE ADD can carry their FK inline.
+        sql_create_column_inline_fk = "CONSTRAINT %(name)s REFERENCES %(to_table)s (%(to_column)s)%(deferrable)s"
 
     sql_create_index = "CREATE INDEX %(name)s ON %(table)s (%(columns)s)%(include)s%(extra)s%(condition)s"
     sql_create_unique_index = "CREATE UNIQUE INDEX %(name)s ON %(table)s (%(columns)s)%(include)s%(condition)s"
@@ -339,6 +355,9 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
                     'column': self.quote_name(ref_column),
                     'to_table': self.quote_name(new_model._meta.db_table),
                     'to_column': self.quote_name(target_column),
+                    # The recreated constraint keeps no ON DELETE action; the
+                    # original rule is not tracked through a table rebuild.
+                    'on_delete_db': '',
                 })
 
         # Run deferred SQL on correct table
@@ -380,6 +399,8 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
                 'to_table': self.quote_name(to_table),
                 'to_column': self.quote_name(to_column),
                 'deferrable': self.connection.ops.deferrable_sql(),
+                'on_delete_db': self._create_on_delete_sql(model, field)
+                if django.VERSION >= (6, 1) else '',
             }
         # Build the SQL and run it
         sql = self.sql_create_column % {
@@ -426,6 +447,12 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         return indexes
 
     def remove_field(self, model, field):
+        # Implicit M2M tables and fields without a database column (e.g.
+        # CompositePrimaryKey) carry no Firebird bookkeeping; the base
+        # implementation handles them fully.
+        if (field.many_to_many and field.remote_field.through._meta.auto_created) or \
+                field.db_parameters(connection=self.connection)["type"] is None:
+            return super(DatabaseSchemaEditor, self).remove_field(model, field)
         # If remove a AutoField, we need remove all related stuff
         # if isinstance(field, AutoField):
         if field.get_internal_type() in ("AutoField", "BigAutoField", "SmallAutoField"):
@@ -1093,10 +1120,15 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
                     autoinc_statements.extend(autoinc_sql)
 
         constraints = [constraint.constraint_sql(model, self) for constraint in model._meta.constraints]
+        # A CompositePrimaryKey contributes no column of its own; the primary
+        # key goes in as a table constraint instead.
+        pk = model._meta.pk
+        if isinstance(pk, CompositePrimaryKey):
+            constraints.append(self._pk_constraint_sql(pk.columns))
         # Make the table
         sql = self.sql_create_table % {
             "table": self.quote_name(model._meta.db_table),
-            "definition": ", ".join(constraint for constraint in (*column_sqls, *constraints) if constraint),
+            "definition": ", ".join(str(constraint) for constraint in (*column_sqls, *constraints) if constraint),
         }
         if model._meta.db_tablespace:
             tablespace_sql = self.connection.ops.tablespace_sql(model._meta.db_tablespace)

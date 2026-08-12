@@ -23,6 +23,11 @@ class DatabaseFeatures(BaseDatabaseFeatures):
     has_case_insensitive_like = False
     supports_index_column_ordering = False
 
+    # BooleanField is a Firebird BOOLEAN (Firebird 3+); without this flag
+    # Django >= 6.1 compiles negated conditionals through an integer CASE
+    # fallback that is invalid against a native boolean column.
+    has_native_boolean_field = True
+
     # Is there a true datatype for uuid?
     has_native_uuid_field = False
 

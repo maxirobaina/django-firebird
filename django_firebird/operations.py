@@ -652,8 +652,10 @@ class DatabaseOperations(BaseDatabaseOperations):
                     relations = self.connection.introspection.get_relations(cursor, table)
                 except Exception:
                     relations = {}
-                depends[table] = {ref_table for _, ref_table in relations.values()
-                                  if ref_table in tables and ref_table != table}
+                # get_relations values are (other_field, other_table) tuples,
+                # with a trailing db_on_delete element on Django >= 6.1.
+                depends[table] = {rel[1] for rel in relations.values()
+                                  if rel[1] in tables and rel[1] != table}
         ordered = []
         remaining = list(tables)
         while remaining:

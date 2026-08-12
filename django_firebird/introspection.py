@@ -1,5 +1,6 @@
 import datetime
 
+import django
 from django.db import DatabaseError
 from django.utils.encoding import force_str
 from django.db.models.indexes import Index
@@ -174,12 +175,38 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
     def get_relations(self, cursor, table_name):
         """
         Returns a dictionary of {field_name: (field_name_other_table, other_table)}
-        representing all relationships to the given table.
+        representing all relationships to the given table. On Django >= 6.1 the
+        values are 3-tuples that also carry the database-level ON DELETE action.
         """
-        constraints = self.get_key_columns(cursor, table_name)
+        tbl_name = "'%s'" % table_name.upper()
+        cursor.execute("""
+            select
+                lower(s.rdb$field_name) as column_name,
+                lower(i2.rdb$relation_name) as referenced_table_name,
+                lower(s2.rdb$field_name) as referenced_column_name,
+                refc.rdb$delete_rule as delete_rule
+            from rdb$index_segments s
+            left join rdb$indices i on i.rdb$index_name = s.rdb$index_name
+            left join rdb$relation_constraints rc on rc.rdb$index_name = s.rdb$index_name
+            left join rdb$ref_constraints refc on rc.rdb$constraint_name = refc.rdb$constraint_name
+            left join rdb$relation_constraints rc2 on rc2.rdb$constraint_name = refc.rdb$const_name_uq
+            left join rdb$indices i2 on i2.rdb$index_name = rc2.rdb$index_name
+            left join rdb$index_segments s2 on i2.rdb$index_name = s2.rdb$index_name
+            WHERE RC.RDB$CONSTRAINT_TYPE = 'FOREIGN KEY'
+            and upper(i.rdb$relation_name) = %s """ % (tbl_name,))
         relations = {}
-        for my_fieldname, other_table, other_field in constraints:
-            relations[my_fieldname] = (other_field, other_table)
+        with_on_delete = django.VERSION >= (6, 1)
+        for column, other_table, other_column, delete_rule in cursor.fetchall():
+            value = (other_column.strip(), other_table.strip())
+            if with_on_delete:
+                rule = (delete_rule or '').strip()
+                if rule == 'RESTRICT':
+                    # Firebird records RESTRICT for foreign keys created
+                    # without an explicit ON DELETE clause; Django treats
+                    # that default as "no database action".
+                    rule = 'NO ACTION'
+                value += (self.on_delete_types.get(rule),)
+            relations[column.strip()] = value
         return relations
 
     def get_constraints(self, cursor, table_name):

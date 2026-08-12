@@ -3,8 +3,8 @@ Running the tests
 =================
 
 The suite in ``tests/test_main`` is derived from Django's own test suite
-(synced with Django 5.2) plus backend-specific apps, and runs against a
-real Firebird server.
+(synced with Django 5.2, updated for Django 6.1 behavior) plus
+backend-specific apps, and runs against a real Firebird server.
 
 Quick start with Docker
 =======================
@@ -17,7 +17,7 @@ Start a server (any of ``3``, ``4``, ``5``, ``6-snapshot``)::
 
 Install the package and Django, then run the suite::
 
-    pip install "Django>=5.2,<5.3" .
+    pip install "Django>=6.1,<6.2" .
     cd tests/test_main
     export FIREBIRD_DATABASE=/var/lib/firebird/data/django-test-default.fdb
     export FIREBIRD_DATABASE_OTHER=/var/lib/firebird/data/django-test-other.fdb

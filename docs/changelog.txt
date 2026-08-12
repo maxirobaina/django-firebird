@@ -3,6 +3,15 @@ Changelog
 
 v5.1.0 (in development)
 -----------------------
++ Django 6.1 support on master (Django 5.2 remains supported on the
+  stable/5.0.x branch): introspection.get_relations returns 3-tuples
+  with the database-level ON DELETE action, foreign keys honour the new
+  DB_CASCADE / DB_SET_NULL / DB_SET_DEFAULT on_delete options in DDL,
+  CompositePrimaryKey tables are created with their composite PRIMARY
+  KEY constraint, and has_native_boolean_field is declared so negated
+  conditional expressions compile as NOT instead of an integer CASE
+  fallback. Vendored tests updated for Django 6.1 behavior; CI and
+  packaging moved to Django 6.1 on Python 3.12/3.13
 + Fix Firebird 6 collation changes on primary key columns: quoted
   identifiers in the recreated constraint, the primary key is recreated
   as a primary key (not a plain UNIQUE), and removing a collation

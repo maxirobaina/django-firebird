@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.11', '3.12']
+        python-version: ['3.12', '3.13']
         firebird-version: ['3', '4', '5', '6-snapshot']
 
     name: "Python ${{ matrix.python-version }} / Firebird ${{ matrix.firebird-version }}"
@@ -60,7 +60,7 @@ jobs:
       - name: Install package and Django
         run: |
           python -m pip install --upgrade pip
-          pip install "Django>=5.2,<5.3" .
+          pip install "Django>=6.1,<6.2" .
 
       - name: Wait for Firebird server
         run: |
@@ -84,5 +84,8 @@ jobs:
 
       - name: Run schema app tests
         working-directory: tests/test_main
-        timeout-minutes: 25
-        run: python manage.py test --noinput schema
+        # A healthy run takes ~6 minutes; the step occasionally hangs with
+        # no output (see issue tracker), so run unbuffered and verbose to
+        # pinpoint the hanging test when it happens.
+        timeout-minutes: 15
+        run: python -u manage.py test --noinput -v2 schema

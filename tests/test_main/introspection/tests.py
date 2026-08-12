@@ -1,7 +1,7 @@
 from unittest import mock, skipUnless
 
 from django.db import DatabaseError, connection
-from django.db.models import Index
+from django.db.models import DB_CASCADE, DB_SET_DEFAULT, DB_SET_NULL, DO_NOTHING, Index
 from django.test import TransactionTestCase, skipUnlessDBFeature
 
 from .models import (
@@ -12,6 +12,9 @@ from .models import (
     Comment,
     Country,
     DbCommentModel,
+    DbOnDeleteCascadeModel,
+    DbOnDeleteSetDefaultModel,
+    DbOnDeleteSetNullModel,
     District,
     Reporter,
     UniqueConstraintConditionModel,
@@ -221,10 +224,10 @@ class IntrospectionTests(TransactionTestCase):
                 cursor, Article._meta.db_table
             )
 
-        # That's {field_name: (field_name_other_table, other_table)}
+        # {field_name: (field_name_other_table, other_table, db_on_delete)}
         expected_relations = {
-            "reporter_id": ("id", Reporter._meta.db_table),
-            "response_to_id": ("id", Article._meta.db_table),
+            "reporter_id": ("id", Reporter._meta.db_table, DO_NOTHING),
+            "response_to_id": ("id", Article._meta.db_table, DO_NOTHING),
         }
         self.assertEqual(relations, expected_relations)
 
@@ -238,6 +241,46 @@ class IntrospectionTests(TransactionTestCase):
             )
         with connection.schema_editor() as editor:
             editor.add_field(Article, body)
+        self.assertEqual(relations, expected_relations)
+
+    @skipUnlessDBFeature("can_introspect_foreign_keys", "supports_on_delete_db_cascade")
+    def test_get_relations_db_on_delete_cascade(self):
+        with connection.cursor() as cursor:
+            relations = connection.introspection.get_relations(
+                cursor, DbOnDeleteCascadeModel._meta.db_table
+            )
+
+        # {field_name: (field_name_other_table, other_table, db_on_delete)}
+        expected_relations = {
+            "fk_db_cascade_id": ("id", City._meta.db_table, DB_CASCADE),
+            "fk_do_nothing_id": ("id", Country._meta.db_table, DO_NOTHING),
+        }
+        self.assertEqual(relations, expected_relations)
+
+    @skipUnlessDBFeature("can_introspect_foreign_keys", "supports_on_delete_db_null")
+    def test_get_relations_db_on_delete_null(self):
+        with connection.cursor() as cursor:
+            relations = connection.introspection.get_relations(
+                cursor, DbOnDeleteSetNullModel._meta.db_table
+            )
+
+        # {field_name: (field_name_other_table, other_table, db_on_delete)}
+        expected_relations = {
+            "fk_set_null_id": ("id", Reporter._meta.db_table, DB_SET_NULL),
+        }
+        self.assertEqual(relations, expected_relations)
+
+    @skipUnlessDBFeature("can_introspect_foreign_keys", "supports_on_delete_db_default")
+    def test_get_relations_db_on_delete_default(self):
+        with connection.cursor() as cursor:
+            relations = connection.introspection.get_relations(
+                cursor, DbOnDeleteSetDefaultModel._meta.db_table
+            )
+
+        # {field_name: (field_name_other_table, other_table, db_on_delete)}
+        expected_relations = {
+            "fk_db_set_default_id": ("id", Country._meta.db_table, DB_SET_DEFAULT),
+        }
         self.assertEqual(relations, expected_relations)
 
     @skipUnless(connection.vendor == 'sqlite', "This is an sqlite-specific issue")
