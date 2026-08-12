@@ -1,8 +1,8 @@
 Changelog
 =========
 
-v5.1.0 (in development)
------------------------
+v5.1.0 (2026-08-12)
+-------------------
 + Django 6.1 support on master (Django 5.2 remains supported on the
   stable/5.0.x branch): introspection.get_relations returns 3-tuples
   with the database-level ON DELETE action, foreign keys honour the new
