@@ -1,6 +1,10 @@
 Changelog
 =========
 
+v5.1.1 (2026-08-12)
+-------------------
++ Declare Python 3.14 support and add it to the CI matrix
+
 v5.1.0 (2026-08-12)
 -------------------
 + Django 6.1 support on master (Django 5.2 remains supported on the
